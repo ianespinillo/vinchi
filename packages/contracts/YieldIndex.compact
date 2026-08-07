@@ -1,0 +1,11 @@
+pragma language_version 0.23;
+
+export ledger currentIndex: Uint<192>;
+export ledger lastCheckpointAt: Uint<64>;
+
+export circuit poke(newIndex: Uint<192>, timestamp: Uint<64>): Uint<192> {
+    assert(newIndex >= currentIndex, "Index must be non-decreasing");
+    currentIndex = disclose(newIndex);
+    lastCheckpointAt = disclose(timestamp);
+    return currentIndex;
+}

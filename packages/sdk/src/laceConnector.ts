@@ -128,14 +128,29 @@ export async function connectLaceWallet(targetNetworkId: string = 'preview'): Pr
         unshieldedAddress = state?.unshieldedAddress || state?.address || null;
       }
 
+      // Helper function to safely parse BigInt from any raw API value
+      const parseBigIntSafe = (val: any): bigint | null => {
+        if (val === undefined || val === null) return null;
+        try {
+          if (typeof val === 'bigint') return val;
+          if (typeof val === 'number') return BigInt(Math.floor(val));
+          if (typeof val === 'string') return BigInt(val);
+          if (typeof val === 'object') {
+            if ('amount' in val) return parseBigIntSafe(val.amount);
+            if ('value' in val) return parseBigIntSafe(val.value);
+          }
+          return BigInt(String(val));
+        } catch {
+          return null;
+        }
+      };
+
       // Extract balance using available API methods
       if (typeof api.getUnshieldedBalances === 'function') {
         const balances = await api.getUnshieldedBalances();
         if (balances && Object.keys(balances).length > 0) {
           const firstBal = Object.values(balances)[0];
-          if (firstBal !== undefined && firstBal !== null) {
-            unshieldedBalance = BigInt(firstBal);
-          }
+          unshieldedBalance = parseBigIntSafe(firstBal);
         }
       }
 
@@ -143,11 +158,9 @@ export async function connectLaceWallet(targetNetworkId: string = 'preview'): Pr
         const state = await api.state();
         if (state?.balances && Object.keys(state.balances).length > 0) {
           const firstBal = Object.values(state.balances)[0];
-          if (firstBal !== undefined && firstBal !== null) {
-            unshieldedBalance = BigInt(firstBal);
-          }
+          unshieldedBalance = parseBigIntSafe(firstBal);
         } else if (state?.unshieldedBalance !== undefined && state?.unshieldedBalance !== null) {
-          unshieldedBalance = BigInt(state.unshieldedBalance);
+          unshieldedBalance = parseBigIntSafe(state.unshieldedBalance);
         }
       }
 
@@ -155,9 +168,7 @@ export async function connectLaceWallet(targetNetworkId: string = 'preview'): Pr
         const balances = await api.balances();
         if (balances && Object.keys(balances).length > 0) {
           const firstBal = Object.values(balances)[0];
-          if (firstBal !== undefined && firstBal !== null) {
-            unshieldedBalance = BigInt(firstBal);
-          }
+          unshieldedBalance = parseBigIntSafe(firstBal);
         }
       }
 

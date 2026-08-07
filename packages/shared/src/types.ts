@@ -64,3 +64,49 @@ export interface ProtocolStats {
   merchantCount: number;
   currentYieldIndex: bigint; // Ray precision (1e27)
 }
+
+export type FaucetTokenType = 'tNIGHT' | 'tUSDC' | 'lUSDv';
+
+export interface FaucetClaimRequest {
+  token: FaucetTokenType;
+  recipientAddress: string;
+  amount: bigint;
+  networkId?: string;
+}
+
+export interface FaucetClaimResult {
+  success: boolean;
+  token: FaucetTokenType;
+  amount: bigint;
+  txHash?: string;
+  commitment?: string;
+  error?: string;
+  requiresCaptcha?: boolean;
+  documentationUrl?: string;
+  requiredParameters?: string[];
+  diagnosticDetails?: string;
+}
+
+export interface ServiceHealth {
+  service: 'node' | 'indexer' | 'proofServer' | 'faucet' | 'backend';
+  url: string;
+  isOnline: boolean;
+  latencyMs?: number;
+  error?: string;
+}
+
+export interface ConnectionHealth {
+  allHealthy: boolean;
+  timestamp: string;
+  services: ServiceHealth[];
+}
+
+export interface MidnightNetworkConfig {
+  nodeUrl: string;
+  indexerUrl: string;
+  proofServerUrl: string;
+  faucetUrl: string;
+  backendUrl: string;
+  networkId: string;
+}
+

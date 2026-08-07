@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@vinchi/shared": "workspace:*",
-    "@vinchi/wallet-core": "workspace:*"
+    "@vinchi/wallet-core": "workspace:*",
+    "@vinchi/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

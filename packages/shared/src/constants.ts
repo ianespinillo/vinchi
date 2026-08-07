@@ -19,6 +19,29 @@ export const PROTOCOL_CONSTANTS = {
   DEFAULT_RATE_BPS: 0,
 };
 
+export const DEFAULT_MIDNIGHT_ENDPOINTS = {
+  NODE_URL: 'http://localhost:9944',
+  INDEXER_URL: 'https://indexer.preview.midnight.network/api/v1/graphql',
+  PROOF_SERVER_URL: 'http://localhost:6300',
+  FAUCET_URL: 'https://faucet.preview.midnight.network/api/v1/faucet',
+  BACKEND_URL: 'http://localhost:4000',
+  NETWORK_ID: 'preview',
+  DOCS_URL: 'https://docs.midnight.network/'
+};
+
+export function getMidnightNetworkConfig(overrides: Record<string, any> = {}) {
+  const env = typeof process !== 'undefined' ? process.env || {} : {};
+  return {
+    nodeUrl: String(overrides.nodeUrl || env.NEXT_PUBLIC_MIDNIGHT_NODE_URL || env.MIDNIGHT_NODE_URL || DEFAULT_MIDNIGHT_ENDPOINTS.NODE_URL),
+    indexerUrl: String(overrides.indexerUrl || env.NEXT_PUBLIC_MIDNIGHT_INDEXER_URL || env.MIDNIGHT_INDEXER_URL || DEFAULT_MIDNIGHT_ENDPOINTS.INDEXER_URL),
+    proofServerUrl: String(overrides.proofServerUrl || env.NEXT_PUBLIC_PROOF_SERVER_URL || env.PROOF_SERVER_URL || DEFAULT_MIDNIGHT_ENDPOINTS.PROOF_SERVER_URL),
+    faucetUrl: String(overrides.faucetUrl || env.NEXT_PUBLIC_MIDNIGHT_FAUCET_URL || env.MIDNIGHT_FAUCET_URL || DEFAULT_MIDNIGHT_ENDPOINTS.FAUCET_URL),
+    backendUrl: String(overrides.backendUrl || env.NEXT_PUBLIC_BACKEND_URL || env.BACKEND_URL || DEFAULT_MIDNIGHT_ENDPOINTS.BACKEND_URL),
+    networkId: String(overrides.networkId || env.NEXT_PUBLIC_NETWORK_ID || env.NETWORK_ID || DEFAULT_MIDNIGHT_ENDPOINTS.NETWORK_ID),
+  };
+}
+
+
 /**
  * Formats raw token balance from base/atomic units (e.g. 6 decimals for tNIGHT/Cardano/USDC)
  * into a human-readable string (e.g., 5000000000n -> "5,000" or "5,000.50").

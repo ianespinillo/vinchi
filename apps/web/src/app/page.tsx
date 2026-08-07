@@ -3,23 +3,46 @@
 import React, { useState, useEffect } from 'react';
 import { VinchiSDK, isLaceAvailable, connectLaceWallet, LaceConnectionState } from '@vinchi/sdk';
 import { VinchiWallet } from '@vinchi/wallet-core';
-import { Merchant, WalletNote, ProtocolStats, formatTokenBalance } from '@vinchi/shared';
+import {
+  Merchant,
+  WalletNote,
+  ProtocolStats,
+  formatTokenBalance,
+  ConnectionHealth,
+  FaucetClaimResult,
+  FaucetTokenType,
+  MidnightNetworkConfig
+} from '@vinchi/shared';
 
 export default function Home() {
   const [sdk] = useState(() => new VinchiSDK());
   const [wallet, setWallet] = useState<VinchiWallet | null>(null);
-  const [seed, setSeed] = useState('seed_secreta_usuario_vinchi_2026');
-  const [publicKey, setPublicKey] = useState('0x01827abc456def7890123456789abcdef0123456789abcdef0123456789abcd');
+  
+  // Seed & Keys state (dynamic, not hardcoded)
+  const [seed, setSeed] = useState<string>(() => {
+    if (typeof window !== 'undefined' && localStorage.getItem('vinchi_seed')) {
+      return localStorage.getItem('vinchi_seed')!;
+    }
+    return 'seed_vinchi_' + Math.random().toString(36).substring(2, 12);
+  });
+  const [publicKey, setPublicKey] = useState<string>('0x01827abc456def7890123456789abcdef0123456789abcdef0123456789abcd');
+
+  // Wallet and Protocol State
   const [balance, setBalance] = useState<bigint>(BigInt(0));
   const [unspentNotes, setUnspentNotes] = useState<WalletNote[]>([]);
   const [merchants, setMerchants] = useState<Merchant[]>([]);
   const [stats, setStats] = useState<ProtocolStats | null>(null);
 
+  // Connection & Health Diagnostics State
+  const [networkConfig, setNetworkConfig] = useState<MidnightNetworkConfig>(sdk.getConfig());
+  const [healthStatus, setHealthStatus] = useState<ConnectionHealth | null>(null);
+  const [isCheckingHealth, setIsCheckingHealth] = useState(false);
+
   // Lace Wallet DApp Connector State
   const [laceState, setLaceState] = useState<LaceConnectionState>({
     isAvailable: false,
     isConnected: false,
-    networkId: 'preprod',
+    networkId: 'preview',
     unshieldedAddress: null,
     unshieldedBalance: null,
     api: null,
@@ -27,27 +50,42 @@ export default function Home() {
     detectedProviders: []
   });
 
-  const [activeTab, setActiveTab] = useState<'wallet' | 'lace' | 'pay' | 'audit' | 'recovery'>('wallet');
+  // Active UI Navigation Tab
+  const [activeTab, setActiveTab] = useState<'wallet' | 'faucet' | 'connections' | 'compact' | 'lace' | 'pay' | 'audit' | 'recovery'>('wallet');
 
   // Form states
   const [depositAmount, setDepositAmount] = useState<string>('500');
   const [selectedMerchant, setSelectedMerchant] = useState<string>('');
   const [payAmount, setPayAmount] = useState<string>('120');
 
+  // Faucet Form State
+  const [faucetToken, setFaucetToken] = useState<FaucetTokenType>('tUSDC');
+  const [faucetAmount, setFaucetAmount] = useState<string>('1000');
+  const [faucetRecipient, setFaucetRecipient] = useState<string>('');
+  const [faucetResult, setFaucetResult] = useState<FaucetClaimResult | null>(null);
+  const [isFaucetClaiming, setIsFaucetClaiming] = useState(false);
+
   // Toast / Status Message
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
 
-  // Check Lace availability on client mount
+  // Check Lace availability & connection health on client mount
   useEffect(() => {
     setLaceState(prev => ({ ...prev, isAvailable: isLaceAvailable() }));
+    runHealthDiagnostics();
   }, []);
 
-  // Initialize Wallet
+  // Initialize / Re-initialize Wallet when seed changes
   useEffect(() => {
     async function init() {
-      const w = await VinchiWallet.create(seed, publicKey);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('vinchi_seed', seed);
+      }
+      const derivedKey = '0x' + Array.from(seed).reduce((acc, char) => acc + char.charCodeAt(0).toString(16), '').padEnd(64, '0').slice(0, 64);
+      setPublicKey(derivedKey);
+
+      const w = await VinchiWallet.create(seed, derivedKey);
       setWallet(w);
       setMerchants(sdk.getMerchants());
       if (sdk.getMerchants().length > 0) {
@@ -56,7 +94,16 @@ export default function Home() {
       refreshState(w);
     }
     init();
-  }, [seed, publicKey]);
+  }, [seed]);
+
+  // Update default Faucet recipient when Lace address is connected
+  useEffect(() => {
+    if (laceState.unshieldedAddress) {
+      setFaucetRecipient(laceState.unshieldedAddress);
+    } else if (wallet) {
+      setFaucetRecipient(wallet.publicKey);
+    }
+  }, [laceState.unshieldedAddress, wallet]);
 
   const refreshState = async (currentWallet: VinchiWallet) => {
     setBalance(currentWallet.getBalance());
@@ -65,11 +112,33 @@ export default function Home() {
     setStats(s);
   };
 
+  const runHealthDiagnostics = async () => {
+    setIsCheckingHealth(true);
+    const health = await sdk.checkConnectionHealth();
+    setHealthStatus(health);
+    setIsCheckingHealth(false);
+  };
+
+  const handleUpdateConfig = (field: keyof MidnightNetworkConfig, value: string) => {
+    const updated = { ...networkConfig, [field]: value };
+    setNetworkConfig(updated);
+    sdk.updateConfig({ [field]: value });
+  };
+
+  const handleGenerateNewSeed = () => {
+    const newSeed = 'seed_vinchi_' + Math.random().toString(36).substring(2, 12) + '_' + Date.now().toString(36);
+    setSeed(newSeed);
+    setStatusMsg({
+      type: 'info',
+      text: 'Nueva frase semilla generada y guardada localmente.'
+    });
+  };
+
   const handleConnectLace = async () => {
     setIsProcessing(true);
-    setStatusMsg({ type: 'info', text: 'Solicitando conexión a la extensión Lace Wallet en red Midnight Preview...' });
+    setStatusMsg({ type: 'info', text: 'Solicitando conexión a la extensión Lace Wallet en la red Midnight...' });
 
-    const res = await connectLaceWallet('preview');
+    const res = await connectLaceWallet(networkConfig.networkId || 'preview');
     setLaceState(res);
     setIsProcessing(false);
 
@@ -77,13 +146,57 @@ export default function Home() {
       const formattedBal = res.unshieldedBalance !== null ? `${formatTokenBalance(res.unshieldedBalance, 6)} tNIGHT` : 'Saldo consultado';
       setStatusMsg({
         type: 'success',
-        text: `¡Lace Wallet conectada en Preview! Dirección: ${res.unshieldedAddress} | Saldo Lace: ${formattedBal}`
+        text: `¡Lace Wallet conectada en red ${res.networkId}! Dirección: ${res.unshieldedAddress} | Saldo: ${formattedBal}`
       });
+      if (res.unshieldedAddress) {
+        setFaucetRecipient(res.unshieldedAddress);
+      }
     } else {
       setStatusMsg({
         type: 'error',
-        text: res.error || 'No se pudo conectar a Lace Wallet en Preview.'
+        text: res.error || 'No se pudo conectar a Lace Wallet.'
       });
+    }
+  };
+
+  const handleFaucetClaim = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!wallet) return;
+    const amountNum = BigInt(faucetAmount || '0');
+    if (amountNum <= BigInt(0)) {
+      setStatusMsg({ type: 'error', text: 'El monto a reclamar debe ser mayor a 0.' });
+      return;
+    }
+
+    setIsFaucetClaiming(true);
+    setFaucetResult(null);
+    setStatusMsg({ type: 'info', text: `Verificando disponibilidad de Faucet de ${faucetToken} en red Midnight...` });
+
+    try {
+      let result: FaucetClaimResult;
+      if (faucetToken === 'tNIGHT') {
+        result = await sdk.claimTNightFaucet(faucetRecipient || laceState.unshieldedAddress || wallet.publicKey, amountNum);
+      } else {
+        result = await sdk.claimTUsdcFaucet(wallet, amountNum);
+        await refreshState(wallet);
+      }
+
+      setFaucetResult(result);
+      if (result.success) {
+        setStatusMsg({
+          type: 'success',
+          text: `¡Reclamo exitoso! Se obtuvieron ${result.amount.toString()} ${result.token}. ${result.txHash ? `Tx: ${result.txHash}` : ''}`
+        });
+      } else {
+        setStatusMsg({
+          type: 'error',
+          text: result.error || 'El Faucet no pudo ser completado directamente.'
+        });
+      }
+    } catch (err: any) {
+      setStatusMsg({ type: 'error', text: err.message || 'Error en el reclamo de Faucet' });
+    } finally {
+      setIsFaucetClaiming(false);
     }
   };
 
@@ -167,7 +280,7 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-zinc-100 p-4 md:p-8">
+    <div className="min-h-screen bg-[#09090b] text-zinc-100 p-4 md:p-8 font-sans">
       {/* Header Bar */}
       <header className="max-w-6xl mx-auto mb-8 pb-6 border-b border-zinc-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
@@ -179,13 +292,26 @@ export default function Home() {
               <h1 className="text-2xl font-bold tracking-tight">
                 Vinchi <span className="text-xs px-2.5 py-0.5 rounded-full bg-purple-950 text-purple-300 border border-purple-800/50 font-normal">Midnight ZK</span>
               </h1>
-              <p className="text-xs text-zinc-400">Protocolo de Pagos Privados para Comercios (Nativo UTXO/Notas)</p>
+              <p className="text-xs text-zinc-400">Protocolo de Pagos Privados y Faucet Multitoken (Nativo UTXO/Notas)</p>
             </div>
           </div>
         </div>
 
-        {/* Header Actions: Lace Wallet Connector Button & Stats */}
+        {/* Header Actions: Lace Connector Button & Stats */}
         <div className="flex flex-wrap items-center gap-3">
+          {/* Quick Health Diagnostics Button */}
+          <button
+            onClick={() => setActiveTab('connections')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-medium flex items-center gap-2 border transition-all ${
+              healthStatus?.allHealthy
+                ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800'
+                : 'bg-amber-950/60 text-amber-300 border-amber-800'
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full ${healthStatus?.allHealthy ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+            <span>{isCheckingHealth ? 'Comprobando...' : (healthStatus?.allHealthy ? 'Conexiones OK' : 'Diagnóstico Red')}</span>
+          </button>
+
           {/* Lace Button */}
           <button
             onClick={handleConnectLace}
@@ -198,8 +324,8 @@ export default function Home() {
             <span>✨</span>
             <span>
               {laceState.isConnected
-                ? `Lace Preview (${laceState.unshieldedAddress?.slice(0, 8)}...${laceState.unshieldedBalance !== null ? ` | ${formatTokenBalance(laceState.unshieldedBalance, 6)} tNIGHT` : ''})`
-                : 'Conectar Lace Wallet (Preview)'}
+                ? `Lace (${laceState.unshieldedAddress?.slice(0, 8)}...${laceState.unshieldedBalance !== null ? ` | ${formatTokenBalance(laceState.unshieldedBalance, 6)} tNIGHT` : ''})`
+                : 'Conectar Lace Wallet'}
             </span>
           </button>
 
@@ -268,10 +394,10 @@ export default function Home() {
                 + Depositar USDC
               </button>
               <button
-                onClick={() => setActiveTab('pay')}
-                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 font-medium text-xs text-zinc-200 border border-zinc-700 transition-all"
+                onClick={() => setActiveTab('faucet')}
+                className="px-4 py-2 rounded-xl bg-indigo-900 hover:bg-indigo-800 font-medium text-xs text-indigo-200 border border-indigo-700 transition-all"
               >
-                💸 Pagar
+                🚰 Faucet Tokens
               </button>
             </div>
           </div>
@@ -295,7 +421,7 @@ export default function Home() {
               <p className="text-xs text-zinc-400">
                 {laceState.isConnected
                   ? `Dirección: ${laceState.unshieldedAddress?.slice(0, 16)}... ${laceState.unshieldedBalance !== null ? `(${laceState.unshieldedBalance.toString()} unidades atómicas)` : ''}`
-                  : 'Conecta tu extensión Lace Wallet para vincular tu saldo de la testnet Preview.'}
+                  : 'Conecta tu extensión Lace Wallet para vincular tu saldo de la testnet.'}
               </p>
             </div>
             <div className="flex gap-2 mt-4 relative z-10">
@@ -314,9 +440,12 @@ export default function Home() {
         <div className="flex border-b border-zinc-800 gap-2 overflow-x-auto">
           {[
             { id: 'wallet', label: '💳 Mi Billetera & Billetes' },
-            { id: 'lace', label: '🦊 Conector Lace Wallet' },
+            { id: 'faucet', label: '🚰 Faucet de Tokens' },
+            { id: 'connections', label: '🔌 Conexiones & Red' },
+            { id: 'compact', label: '📜 Contratos Compact' },
+            { id: 'lace', label: '🦊 Conector Lace' },
             { id: 'pay', label: '🛍️ Terminal de Pago ZK' },
-            { id: 'audit', label: '🔍 Auditor de Reservas' },
+            { id: 'audit', label: '🔍 Auditoría Reservas' },
             { id: 'recovery', label: '🔑 Recuperación (N1)' }
           ].map(tab => (
             <button
@@ -333,89 +462,367 @@ export default function Home() {
           ))}
         </div>
 
-        {/* TAB LACE WALLET CONNECTOR */}
-        {activeTab === 'lace' && (
-          <div className="max-w-2xl mx-auto glass-card p-6 rounded-2xl border border-zinc-800 space-y-6">
+        {/* TAB FAUCET: RECLAMO DE TOKENS Y DOCUMENTACION MIDNIGHT */}
+        {activeTab === 'faucet' && (
+          <div className="max-w-3xl mx-auto glass-card p-6 rounded-2xl border border-zinc-800 space-y-6">
             <div>
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <span>🦊</span> Conector Oficial Lace Wallet (Midnight DApp Connector API)
+                <span>🚰</span> Faucet de Tokens Testnet (tNIGHT & tUSDC / lUSDv)
               </h2>
               <p className="text-xs text-zinc-400 mt-1">
-                Conecta la extensión oficial de Lace Wallet en la red <strong className="text-purple-300">Midnight Preview Testnet</strong> mediante la API <code className="text-purple-300">window.midnight.mnLace</code>.
+                Reclama tokens de prueba sin hardcoding utilizando los endpoints oficiales y evaluando la viabilidad según la documentación de Midnight.
               </p>
             </div>
 
-            <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-3 text-xs">
-              <div className="flex justify-between items-center">
-                <span className="text-zinc-400">Objetos Inyectados en Navegador:</span>
-                <span className="font-bold text-purple-300">
-                  {laceState.detectedProviders.length > 0
-                    ? laceState.detectedProviders.join(', ')
-                    : 'Ninguno detectado en window'}
-                </span>
-              </div>
+            <form onSubmit={handleFaucetClaim} className="space-y-5">
+              {/* Token Selector */}
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-2">Seleccionar Token a Reclamar</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFaucetToken('tUSDC');
+                      setFaucetAmount('1000');
+                    }}
+                    className={`p-4 rounded-xl border text-left transition-all ${
+                      faucetToken === 'tUSDC'
+                        ? 'bg-purple-950/50 border-purple-600 text-white'
+                        : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                    }`}
+                  >
+                    <div className="font-bold text-sm text-purple-300">tUSDC / lUSDv (Vinchi ZK)</div>
+                    <div className="text-xs text-zinc-400 mt-1">Notas de privacidad para colateral y pagos en Vinchi</div>
+                  </button>
 
-              <div className="flex justify-between items-center">
-                <span className="text-zinc-400">Midnight Lace (`window.midnight.mnLace`):</span>
-                <span className={`font-bold ${laceState.isAvailable ? 'text-emerald-400' : 'text-amber-400'}`}>
-                  {laceState.isAvailable ? '✓ Detectado' : '⚠ Ausente'}
-                </span>
-              </div>
-
-              <div className="flex justify-between items-center">
-                <span className="text-zinc-400">Estado de Conexión:</span>
-                <span className={`font-bold ${laceState.isConnected ? 'text-emerald-400' : 'text-zinc-500'}`}>
-                  {laceState.isConnected ? `Conectado a ${laceState.networkId}` : 'Desconectado'}
-                </span>
-              </div>
-
-              <div className="flex justify-between items-center">
-                <span className="text-zinc-400">Saldo Unshielded en Lace Wallet:</span>
-                <span className="font-bold text-emerald-300 font-mono">
-                  {laceState.unshieldedBalance !== null ? `${formatTokenBalance(laceState.unshieldedBalance, 6)} tNIGHT` : 'No consultado / Sin fondos'}
-                </span>
-              </div>
-
-              {laceState.unshieldedBalance !== null && (
-                <div className="flex justify-between items-center text-[11px] text-zinc-500 font-mono">
-                  <span>Unidades Atómicas Raw (10^6):</span>
-                  <span>{laceState.unshieldedBalance.toString()}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFaucetToken('tNIGHT');
+                      setFaucetAmount('1000');
+                    }}
+                    className={`p-4 rounded-xl border text-left transition-all ${
+                      faucetToken === 'tNIGHT'
+                        ? 'bg-emerald-950/50 border-emerald-600 text-white'
+                        : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                    }`}
+                  >
+                    <div className="font-bold text-sm text-emerald-300">tNIGHT (Nativo Midnight)</div>
+                    <div className="text-xs text-zinc-400 mt-1">Token nativo de testnet necesario para generar tDUST</div>
+                  </button>
                 </div>
-              )}
-
-              {laceState.unshieldedAddress && (
-                <div className="pt-2 border-t border-zinc-800">
-                  <span className="text-zinc-500 block">Dirección Pública Unshielded (Lace):</span>
-                  <span className="font-mono text-purple-300 text-xs break-all">{laceState.unshieldedAddress}</span>
-                </div>
-              )}
-            </div>
-
-            {laceState.error && (
-              <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-800/60 text-amber-200 text-xs space-y-2">
-                <div className="font-bold">⚠️ Diagnóstico de Conexión:</div>
-                <div>{laceState.error}</div>
               </div>
-            )}
 
-            <button
-              onClick={handleConnectLace}
-              disabled={isProcessing}
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium text-sm transition-all shadow-lg glow-purple"
-            >
-              {isProcessing ? 'Conectando / Sincronizando...' : (laceState.isConnected ? '🔄 Reconsultar / Sincronizar Saldo Lace' : 'Conectar / Reintentar Lace Wallet (Preview)')}
-            </button>
+              {/* Amount Selection & Presets */}
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1">Monto a Reclamar</label>
+                <input
+                  type="number"
+                  value={faucetAmount}
+                  onChange={e => setFaucetAmount(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white font-mono text-sm focus:outline-none focus:border-purple-500 mb-2"
+                  placeholder="Ej: 1000"
+                />
 
-            {laceState.isConnected && (
-              <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs space-y-1">
-                <div className="font-bold">✓ Conexión establecida con Lace Wallet (Preview)</div>
-                <div>Las transacciones ZK pueden ser firmadas y autorizadas mediante tu billetera de navegador en la testnet Preview.</div>
+                <div className="grid grid-cols-4 gap-2">
+                  {[100, 500, 1000, 5000].map(amt => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setFaucetAmount(amt.toString())}
+                      className="px-2 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300 border border-zinc-700 text-center"
+                    >
+                      {amt} {faucetToken}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Recipient Address */}
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1">Dirección de Destino</label>
+                <input
+                  type="text"
+                  value={faucetRecipient}
+                  onChange={e => setFaucetRecipient(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white font-mono text-xs focus:outline-none focus:border-purple-500"
+                  placeholder="Dirección Bech32m o Clave Pública"
+                />
+                <span className="text-[10px] text-zinc-500 mt-1 block">
+                  {laceState.unshieldedAddress
+                    ? `✓ Autocompletada con tu Lace Wallet (${laceState.unshieldedAddress.slice(0, 12)}...)`
+                    : 'Puedes conectar Lace Wallet o ingresar la dirección manualmente.'}
+                </span>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isFaucetClaiming}
+                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-sm transition-all shadow-lg glow-purple disabled:opacity-50"
+              >
+                {isFaucetClaiming ? 'Procesando Reclamo...' : `Reclamar ${faucetAmount} ${faucetToken}`}
+              </button>
+            </form>
+
+            {/* Faucet Result & Midnight Documentation Diagnosis */}
+            {faucetResult && (
+              <div
+                className={`p-5 rounded-2xl border space-y-3 transition-all ${
+                  faucetResult.success
+                    ? 'bg-emerald-950/40 border-emerald-800 text-emerald-200'
+                    : 'bg-amber-950/40 border-amber-800 text-amber-200'
+                }`}
+              >
+                <div className="flex items-center gap-2 font-bold text-sm">
+                  <span>{faucetResult.success ? '✓ Reclamo Procesado Exitosamente' : '⚠️ Solicitud de Faucet con Verificación Requerida'}</span>
+                </div>
+
+                {faucetResult.txHash && (
+                  <div className="text-xs font-mono text-zinc-300">
+                    <strong>Transaction Hash:</strong> {faucetResult.txHash}
+                  </div>
+                )}
+
+                {faucetResult.diagnosticDetails && (
+                  <div className="text-xs whitespace-pre-line bg-zinc-950/60 p-3.5 rounded-xl border border-zinc-800 font-mono text-zinc-300">
+                    {faucetResult.diagnosticDetails}
+                  </div>
+                )}
+
+                {faucetResult.requiresCaptcha && (
+                  <div className="p-4 rounded-xl bg-purple-950/40 border border-purple-800/60 space-y-2 text-xs">
+                    <div className="font-semibold text-purple-200">📌 Verificación de Parámetros y Documentación Oficial de Midnight:</div>
+                    <p className="text-purple-300/80">
+                      Según la especificación oficial de Midnight (docs.midnight.network), los endpoints de testnet pública imponen Anti-Bot Captcha para la asignación de tNIGHT.
+                    </p>
+
+                    <div className="space-y-1">
+                      <div className="font-semibold text-purple-200">Parámetros Requeridos para Reclamo Directo:</div>
+                      <ul className="list-disc list-inside text-purple-300/80 text-[11px]">
+                        {faucetResult.requiredParameters?.map((param, idx) => (
+                          <li key={idx}>{param}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="pt-2 flex flex-wrap gap-3">
+                      <a
+                        href={faucetResult.documentationUrl || 'https://docs.midnight.network/'}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-3 py-1.5 rounded-lg bg-purple-900 hover:bg-purple-800 text-purple-100 font-medium text-xs border border-purple-700 transition-all"
+                      >
+                        📖 Ver Documentación Oficial
+                      </a>
+                      <a
+                        href="https://faucet.preview.midnight.network/"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-3 py-1.5 rounded-lg bg-emerald-900 hover:bg-emerald-800 text-emerald-100 font-medium text-xs border border-emerald-700 transition-all"
+                      >
+                        🌐 Portal Web Faucet Midnight
+                      </a>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
         )}
 
-        {/* TAB 1: WALLET & DEPOSIT */}
+        {/* TAB CONNECTIONS & HEALTH DIAGNOSTICS */}
+        {activeTab === 'connections' && (
+          <div className="glass-card p-6 rounded-2xl border border-zinc-800 space-y-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <span>🔌</span> Conexiones Permitidas de la Red Midnight (Sin Hardcoding)
+                </h2>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Verificación en tiempo real de todos los endpoints configurables del protocolo.
+                </p>
+              </div>
+              <button
+                onClick={runHealthDiagnostics}
+                disabled={isCheckingHealth}
+                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs text-purple-300 border border-zinc-700 transition-all"
+              >
+                {isCheckingHealth ? 'Diagnosticando...' : '🔄 Re-probar Conexiones'}
+              </button>
+            </div>
+
+            {/* Health Services Grid */}
+            {healthStatus && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {healthStatus.services.map(svc => (
+                  <div
+                    key={svc.service}
+                    className={`p-4 rounded-xl border flex flex-col justify-between space-y-2 ${
+                      svc.isOnline
+                        ? 'bg-emerald-950/20 border-emerald-900/60'
+                        : 'bg-amber-950/20 border-amber-900/60'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-sm text-white uppercase tracking-wider">{svc.service}</span>
+                      <span
+                        className={`text-[10px] px-2.5 py-0.5 rounded-full border ${
+                          svc.isOnline
+                            ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                            : 'bg-amber-950 text-amber-300 border-amber-800'
+                        }`}
+                      >
+                        {svc.isOnline ? `Online (${svc.latencyMs}ms)` : 'Offline / Limitado'}
+                      </span>
+                    </div>
+
+                    <div className="text-xs font-mono text-zinc-400 truncate">
+                      {svc.url}
+                    </div>
+
+                    {svc.error && (
+                      <div className="text-[11px] text-amber-300/80 bg-amber-950/40 p-2 rounded-lg border border-amber-900/50">
+                        {svc.error}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Configurable Endpoints Form (Zero Hardcoding) */}
+            <div className="pt-4 border-t border-zinc-800 space-y-4">
+              <h3 className="text-sm font-bold text-white">Configuración Dinámica de Endpoints</h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div>
+                  <label className="block text-zinc-400 mb-1">Midnight Node RPC URL</label>
+                  <input
+                    type="text"
+                    value={networkConfig.nodeUrl}
+                    onChange={e => handleUpdateConfig('nodeUrl', e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-zinc-400 mb-1">Midnight Indexer GraphQL URL</label>
+                  <input
+                    type="text"
+                    value={networkConfig.indexerUrl}
+                    onChange={e => handleUpdateConfig('indexerUrl', e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-zinc-400 mb-1">Proof Server URL</label>
+                  <input
+                    type="text"
+                    value={networkConfig.proofServerUrl}
+                    onChange={e => handleUpdateConfig('proofServerUrl', e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-zinc-400 mb-1">Midnight Faucet URL</label>
+                  <input
+                    type="text"
+                    value={networkConfig.faucetUrl}
+                    onChange={e => handleUpdateConfig('faucetUrl', e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-white font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB MIDNIGHT COMPACT SMART CONTRACTS */}
+        {activeTab === 'compact' && (
+          <div className="glass-card p-6 rounded-2xl border border-zinc-800 space-y-6">
+            <div>
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <span>📜</span> Framework de Smart Contracts Compact (Midnight Network)
+              </h2>
+              <p className="text-xs text-zinc-400 mt-1">
+                Vinchi ejecuta la lógica funcional de circuito en lenguaje Compact nativo compilado a ZKIR (`.compact` / `.zkir`).
+              </p>
+            </div>
+
+            {/* Compact Contracts Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+              <div className="p-4 rounded-xl bg-zinc-900 border border-purple-900/40 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-purple-300 text-sm">VinchiNotes.compact</span>
+                  <span className="px-2 py-0.5 rounded bg-purple-950 text-purple-300 text-[10px] border border-purple-800">Núcleo ZK</span>
+                </div>
+                <p className="text-zinc-400">Custodia del árbol de Merkle de notas (`noteTreeRoot`) y conjuntos de nullifiers (`lastNullifier`).</p>
+                <div className="font-mono text-[11px] text-zinc-300 pt-1 border-t border-zinc-800">
+                  Circuitos: <code className="text-purple-400">deposit()</code>, <code className="text-purple-400">pay()</code>, <code className="text-purple-400">materialize()</code>, <code className="text-purple-400">redeem()</code>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-zinc-900 border border-emerald-900/40 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-emerald-300 text-sm">MerchantRegistry.compact</span>
+                  <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[10px] border border-emerald-800">Membresía</span>
+                </div>
+                <p className="text-zinc-400">Registro de comercios habilitados (`merchantRoot`) para verificación en el circuito de pago.</p>
+                <div className="font-mono text-[11px] text-zinc-300 pt-1 border-t border-zinc-800">
+                  Circuito: <code className="text-emerald-400">updateMerchantRoot()</code>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-zinc-900 border border-indigo-900/40 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-indigo-300 text-sm">YieldIndex.compact</span>
+                  <span className="px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 text-[10px] border border-indigo-800">Oráculo Yield</span>
+                </div>
+                <p className="text-zinc-400">Actualización y checkpoints del índice de rendimiento global acumulado (`currentIndex`).</p>
+                <div className="font-mono text-[11px] text-zinc-300 pt-1 border-t border-zinc-800">
+                  Circuito: <code className="text-indigo-400">poke()</code>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-zinc-900 border border-amber-900/40 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-amber-300 text-sm">Governance.compact</span>
+                  <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 text-[10px] border border-amber-800">Pausas & Roles</span>
+                </div>
+                <p className="text-zinc-400">Interruptores de circuito (*circuit breaker*) de grano fino para seguridad del protocolo.</p>
+                <div className="font-mono text-[11px] text-zinc-300 pt-1 border-t border-zinc-800">
+                  Circuitos: <code className="text-amber-400">setDepositPaused()</code>, <code className="text-amber-400">setPayPaused()</code>
+                </div>
+              </div>
+            </div>
+
+            {/* Live Compact Ledger State Monitor */}
+            <div className="p-5 rounded-2xl bg-zinc-900/80 border border-zinc-800 space-y-3 font-mono text-xs">
+              <div className="font-bold text-sm text-white flex justify-between items-center">
+                <span>Estado Público del Ledger Compact (On-Chain)</span>
+                <span className="text-xs text-purple-400 font-normal">SDK `@vinchi/contracts`</span>
+              </div>
+
+              {(() => {
+                const ledger = sdk.getCompactLedgerState();
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-zinc-300 text-[11px]">
+                    <div><strong>noteTreeRoot:</strong> <span className="text-purple-300">{ledger.noteTreeRoot}</span></div>
+                    <div><strong>lastNullifier:</strong> <span className="text-purple-300">{ledger.lastNullifier}</span></div>
+                    <div><strong>totalCollateral:</strong> <span className="text-emerald-400 font-bold">{ledger.totalCollateral.toString()} USDC</span></div>
+                    <div><strong>totalIssued:</strong> <span className="text-purple-400 font-bold">{ledger.totalIssued.toString()} lUSDv</span></div>
+                    <div><strong>merchantRoot:</strong> <span className="text-indigo-300">{ledger.merchantRoot}</span></div>
+                    <div><strong>yieldIndex:</strong> <span className="text-indigo-300">{ledger.yieldIndex.toString()} RAY</span></div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* TAB WALLET & DEPOSIT */}
         {activeTab === 'wallet' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Deposit Form */}
@@ -473,8 +880,14 @@ export default function Home() {
               </div>
 
               {unspentNotes.length === 0 ? (
-                <div className="p-8 text-center border border-dashed border-zinc-800 rounded-xl text-zinc-500 text-sm">
-                  No tenés notas activas en tu billetera. ¡Hacé tu primer depósito arriba!
+                <div className="p-8 text-center border border-dashed border-zinc-800 rounded-xl text-zinc-500 text-sm space-y-3">
+                  <div>No tenés notas activas en tu billetera.</div>
+                  <button
+                    onClick={() => setActiveTab('faucet')}
+                    className="px-4 py-2 rounded-xl bg-purple-900/60 hover:bg-purple-800 text-purple-200 text-xs font-semibold border border-purple-700 transition-all"
+                  >
+                    🚰 Ir al Faucet a reclamar tUSDC
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
@@ -510,7 +923,68 @@ export default function Home() {
           </div>
         )}
 
-        {/* TAB 2: PAY TO MERCHANT */}
+        {/* TAB LACE WALLET CONNECTOR */}
+        {activeTab === 'lace' && (
+          <div className="max-w-2xl mx-auto glass-card p-6 rounded-2xl border border-zinc-800 space-y-6">
+            <div>
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <span>🦊</span> Conector Oficial Lace Wallet (Midnight DApp Connector API)
+              </h2>
+              <p className="text-xs text-zinc-400 mt-1">
+                Conecta la extensión oficial de Lace Wallet en la red <strong className="text-purple-300">Midnight Preview/Preprod</strong> mediante la API <code className="text-purple-300">window.midnight.mnLace</code>.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-3 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-zinc-400">Objetos Inyectados en Navegador:</span>
+                <span className="font-bold text-purple-300">
+                  {laceState.detectedProviders.length > 0
+                    ? laceState.detectedProviders.join(', ')
+                    : 'Ninguno detectado en window'}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className="text-zinc-400">Midnight Lace (`window.midnight.mnLace`):</span>
+                <span className={`font-bold ${laceState.isAvailable ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {laceState.isAvailable ? '✓ Detectado' : '⚠ Ausente'}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className="text-zinc-400">Estado de Conexión:</span>
+                <span className={`font-bold ${laceState.isConnected ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                  {laceState.isConnected ? `Conectado a ${laceState.networkId}` : 'Desconectado'}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className="text-zinc-400">Saldo Unshielded en Lace Wallet:</span>
+                <span className="font-bold text-emerald-300 font-mono">
+                  {laceState.unshieldedBalance !== null ? `${formatTokenBalance(laceState.unshieldedBalance, 6)} tNIGHT` : 'No consultado / Sin fondos'}
+                </span>
+              </div>
+
+              {laceState.unshieldedAddress && (
+                <div className="pt-2 border-t border-zinc-800">
+                  <span className="text-zinc-500 block">Dirección Pública Unshielded (Lace):</span>
+                  <span className="font-mono text-purple-300 text-xs break-all">{laceState.unshieldedAddress}</span>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={handleConnectLace}
+              disabled={isProcessing}
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium text-sm transition-all shadow-lg glow-purple"
+            >
+              {isProcessing ? 'Conectando / Sincronizando...' : (laceState.isConnected ? '🔄 Reconsultar Saldo Lace' : 'Conectar Lace Wallet')}
+            </button>
+          </div>
+        )}
+
+        {/* TAB PAY TO MERCHANT */}
         {activeTab === 'pay' && (
           <div className="max-w-2xl mx-auto glass-card p-6 rounded-2xl border border-zinc-800 space-y-6">
             <div>
@@ -549,15 +1023,6 @@ export default function Home() {
                 />
               </div>
 
-              <div className="p-4 rounded-xl bg-purple-950/20 border border-purple-900/40 text-xs text-purple-300 space-y-1">
-                <div className="font-semibold">🔒 Garantías de Privacidad ZK:</div>
-                <ul className="list-disc list-inside space-y-0.5 text-purple-300/80">
-                  <li>Se consumen tus notas y se publican nullifiers anónimos.</li>
-                  <li>Se crea una nota de pago para el comercio y una nota de vuelto para vos.</li>
-                  <li>Nadie externamente puede ver el monto o relacionar pagador y cobrador.</li>
-                </ul>
-              </div>
-
               <button
                 type="submit"
                 disabled={isProcessing || balance < BigInt(payAmount || '0')}
@@ -566,17 +1031,10 @@ export default function Home() {
                 {isProcessing ? 'Generando Prueba ZK...' : 'Pagar con Privacidad ZK'}
               </button>
             </form>
-
-            {lastTxHash && (
-              <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-400 space-y-1">
-                <div className="text-emerald-400 font-bold">✓ Transacción transmitida a Midnight:</div>
-                <div>Tx Hash: <span className="text-zinc-200">{lastTxHash}</span></div>
-              </div>
-            )}
           </div>
         )}
 
-        {/* TAB 3: PROOF OF RESERVES AUDITOR */}
+        {/* TAB AUDIT */}
         {activeTab === 'audit' && stats && (
           <div className="glass-card p-6 rounded-2xl border border-zinc-800 space-y-6">
             <div>
@@ -602,16 +1060,10 @@ export default function Home() {
                 <span className="text-2xl font-bold text-indigo-400">{stats.totalNotesCount} Notas</span>
               </div>
             </div>
-
-            <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-400 space-y-2">
-              <div className="font-semibold text-zinc-200">Demostración de Solvencia:</div>
-              <div>Respaldo Colateral / Emisión = <span className="text-emerald-400 font-bold">100% Solvente</span></div>
-              <div>Rendimiento Acumulado del Índice (`yieldIndex`): <span className="text-purple-300">1.000000000000000000000000000 RAY</span></div>
-            </div>
           </div>
         )}
 
-        {/* TAB 4: SEED RECOVERY */}
+        {/* TAB SEED RECOVERY */}
         {activeTab === 'recovery' && (
           <div className="max-w-xl mx-auto glass-card p-6 rounded-2xl border border-zinc-800 space-y-6">
             <div>
@@ -626,12 +1078,20 @@ export default function Home() {
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-zinc-400 mb-1">Frase Semilla (Seed Secret)</label>
-                <input
-                  type="text"
-                  value={seed}
-                  onChange={e => setSeed(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white font-mono text-xs focus:outline-none focus:border-purple-500"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={seed}
+                    onChange={e => setSeed(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white font-mono text-xs focus:outline-none focus:border-purple-500"
+                  />
+                  <button
+                    onClick={handleGenerateNewSeed}
+                    className="px-3 py-2 rounded-xl bg-purple-950 text-purple-200 border border-purple-800 text-xs font-medium whitespace-nowrap"
+                  >
+                    🎲 Nueva Semilla
+                  </button>
+                </div>
               </div>
 
               <button

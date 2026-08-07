@@ -1,0 +1,68 @@
+pragma language_version 0.23;
+
+export struct Note {
+    owner: Bytes<32>,
+    amount: Uint<128>,
+    maturesAt: Uint<64>,
+    rateBps: Uint<16>,
+    nonce: Bytes<32>
+}
+
+// Public ledger state
+export ledger noteTreeRoot: Bytes<32>;
+export ledger lastNullifier: Bytes<32>;
+export ledger totalCollateral: Uint<128>;
+export ledger totalIssued: Uint<128>;
+export ledger merchantRoot: Bytes<32>;
+export ledger yieldIndex: Uint<192>;
+
+export circuit deposit(
+    amount: Uint<128>,
+    periodDays: Uint<64>,
+    owner: Bytes<32>,
+    nonce: Bytes<32>
+): Uint<128> {
+    assert(amount > 0, "Amount must be greater than zero");
+    const netYield = 0 as Uint<128>;
+    const lAmount = (amount + netYield) as Uint<128>;
+    
+    totalCollateral = disclose((totalCollateral + amount) as Uint<128>);
+    totalIssued = disclose((totalIssued + lAmount) as Uint<128>);
+    
+    return lAmount;
+}
+
+export circuit pay(
+    inputAmount: Uint<128>,
+    merchantAmount: Uint<128>,
+    changeAmount: Uint<128>,
+    nullifier: Bytes<32>,
+    merchantCommitment: Bytes<32>,
+    changeCommitment: Bytes<32>
+): [] {
+    assert(inputAmount == (merchantAmount + changeAmount) as Uint<128>, "Conservation of value failed");
+    lastNullifier = disclose(nullifier);
+    noteTreeRoot = disclose(merchantCommitment);
+}
+
+export circuit materialize(
+    maturesAt: Uint<64>,
+    currentTime: Uint<64>,
+    nullifier: Bytes<32>,
+    newCommitment: Bytes<32>
+): [] {
+    assert(maturesAt <= currentTime, "Note has not reached maturity");
+    lastNullifier = disclose(nullifier);
+    noteTreeRoot = disclose(newCommitment);
+}
+
+export circuit redeem(
+    amount: Uint<128>,
+    nullifier: Bytes<32>
+): Uint<128> {
+    assert(amount > 0, "Amount must be positive");
+    lastNullifier = disclose(nullifier);
+    totalCollateral = disclose((totalCollateral - amount) as Uint<128>);
+    totalIssued = disclose((totalIssued - amount) as Uint<128>);
+    return amount;
+}
