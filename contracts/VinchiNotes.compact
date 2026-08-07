@@ -1,7 +1,6 @@
-// VinchiNotes.compact — Contrato Núcleo de Pagos Privados en Midnight
-// Basado en la especificación nativa de notas (modelo UTXO/Zcash)
+pragma language_version 0.23;
 
-struct Note {
+export struct Note {
     owner: Bytes<32>,
     amount: Uint<128>,
     maturesAt: Uint<64>,
@@ -9,77 +8,61 @@ struct Note {
     nonce: Bytes<32>
 }
 
-ledger {
-    // Árbol de Merkle de commitments de todas las notas emitidas
-    noteTree: MerkleTree<32, Field>;
+// Public ledger state
+export ledger noteTreeRoot: Bytes<32>;
+export ledger lastNullifier: Bytes<32>;
+export ledger totalCollateral: Uint<128>;
+export ledger totalIssued: Uint<128>;
+export ledger merchantRoot: Bytes<32>;
+export ledger yieldIndex: Uint<192>;
 
-    // Conjunto de nullifiers gastados para prevención de doble gasto
-    nullifiers: Set<Field>;
-
-    // Prueba de reservas públicas (Transparencia Agregada)
-    totalCollateral: Uint<128>;
-    totalIssued: Uint<128>;
-
-    // Raíz del árbol de Merkle de comercios habilitados
-    merchantRoot: Field;
-
-    // Estado de pausa por circuito (Governance)
-    isDepositPaused: Boolean;
-    isPayPaused: Boolean;
+export circuit deposit(
+    amount: Uint<128>,
+    periodDays: Uint<64>,
+    owner: Bytes<32>,
+    nonce: Bytes<32>
+): Uint<128> {
+    assert(amount > 0, "Amount must be greater than zero");
+    const netYield = 0 as Uint<128>;
+    const lAmount = (amount + netYield) as Uint<128>;
+    
+    totalCollateral = disclose((totalCollateral + amount) as Uint<128>);
+    totalIssued = disclose((totalIssued + lAmount) as Uint<128>);
+    
+    return lAmount;
 }
 
-// Circuito de Depósito: USDC -> Nota Privada lUSDv
-circuit deposit(amount: Uint<128>, owner: Bytes<32>, nonce: Bytes<32>, maturesAt: Uint<64>): Field {
-    assert !ledger.isDepositPaused;
-    assert amount > 0;
-
-    // Calcular commitment de la nota
-    const commitment = hash(owner, amount, maturesAt, 0, nonce);
-
-    // Insertar commitment en el árbol de notas público
-    ledger.noteTree.insert(commitment);
-
-    // Actualizar agregados de reservas
-    ledger.totalCollateral = ledger.totalCollateral + amount;
-    ledger.totalIssued = ledger.totalIssued + amount;
-
-    return commitment;
-}
-
-// Circuito de Pago Privado ZK: Gastar notas de entrada y crear notas de salida (pago + cambio)
-circuit pay(
-    inputNullifier: Field,
-    outputMerchantCommitment: Field,
-    outputChangeCommitment: Field,
+export circuit pay(
     inputAmount: Uint<128>,
-    payAmount: Uint<128>,
-    changeAmount: Uint<128>
-): Boolean {
-    assert !ledger.isPayPaused;
-    assert inputAmount == payAmount + changeAmount; // Conservación de valor
-
-    // Verificación de doble gasto
-    assert !ledger.nullifiers.contains(inputNullifier);
-    ledger.nullifiers.insert(inputNullifier);
-
-    // Insertar nuevos commitments de salida
-    ledger.noteTree.insert(outputMerchantCommitment);
-    if (changeAmount > 0) {
-        ledger.noteTree.insert(outputChangeCommitment);
-    }
-
-    return true;
+    merchantAmount: Uint<128>,
+    changeAmount: Uint<128>,
+    nullifier: Bytes<32>,
+    merchantCommitment: Bytes<32>,
+    changeCommitment: Bytes<32>
+): [] {
+    assert(inputAmount == (merchantAmount + changeAmount) as Uint<128>, "Conservation of value failed");
+    lastNullifier = disclose(nullifier);
+    noteTreeRoot = disclose(merchantCommitment);
 }
 
-// Circuito de Retiro (Redeem): Nota Privada -> USDC
-circuit redeem(nullifier: Field, amount: Uint<128>): Boolean {
-    // REDEEM NUNCA ES PAUSABLE por diseño de seguridad
-    assert amount > 0;
-    assert !ledger.nullifiers.contains(nullifier);
+export circuit materialize(
+    maturesAt: Uint<64>,
+    currentTime: Uint<64>,
+    nullifier: Bytes<32>,
+    newCommitment: Bytes<32>
+): [] {
+    assert(maturesAt <= currentTime, "Note has not reached maturity");
+    lastNullifier = disclose(nullifier);
+    noteTreeRoot = disclose(newCommitment);
+}
 
-    ledger.nullifiers.insert(nullifier);
-    ledger.totalCollateral = ledger.totalCollateral - amount;
-    ledger.totalIssued = ledger.totalIssued - amount;
-
-    return true;
+export circuit redeem(
+    amount: Uint<128>,
+    nullifier: Bytes<32>
+): Uint<128> {
+    assert(amount > 0, "Amount must be positive");
+    lastNullifier = disclose(nullifier);
+    totalCollateral = disclose((totalCollateral - amount) as Uint<128>);
+    totalIssued = disclose((totalIssued - amount) as Uint<128>);
+    return amount;
 }

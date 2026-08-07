@@ -1,18 +1,19 @@
-// Governance.compact — Administración de Pausas y Roles
+pragma language_version 0.23;
 
-ledger {
-    governorPubKey: Bytes<32>;
-    guardianPubKey: Bytes<32>;
-    isDepositPaused: Boolean;
-    isPayPaused: Boolean;
+export ledger governor: Bytes<32>;
+export ledger guardian: Bytes<32>;
+export ledger depositPaused: Boolean;
+export ledger payPaused: Boolean;
+export ledger materializePaused: Boolean;
+
+export circuit setDepositPaused(paused: Boolean): [] {
+    depositPaused = disclose(paused);
 }
 
-circuit setPauseDeposit(paused: Boolean): Boolean {
-    ledger.isDepositPaused = paused;
-    return true;
+export circuit setPayPaused(paused: Boolean): [] {
+    payPaused = disclose(paused);
 }
 
-circuit setPausePay(paused: Boolean): Boolean {
-    ledger.isPayPaused = paused;
-    return true;
+export circuit setMaterializePaused(paused: Boolean): [] {
+    materializePaused = disclose(paused);
 }

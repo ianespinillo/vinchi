@@ -1,19 +1,11 @@
-// YieldIndex.compact — Historial de Índices de Rendimiento y Checkpoints
+pragma language_version 0.23;
 
-ledger {
-    currentIndex: Uint<128>;
-    lastCheckpointTimestamp: Uint<64>;
-    indexCheckpoints: MerkleTree<16, Field>;
-}
+export ledger currentIndex: Uint<192>;
+export ledger lastCheckpointAt: Uint<64>;
 
-// Circuito poke(): Sin permisos. Cualquiera puede densificar el historial.
-circuit poke(timestamp: Uint<64>, newIndex: Uint<128>): Boolean {
-    assert timestamp > ledger.lastCheckpointTimestamp;
-    
-    const checkpointHash = hash(timestamp, newIndex);
-    ledger.indexCheckpoints.insert(checkpointHash);
-    ledger.lastCheckpointTimestamp = timestamp;
-    ledger.currentIndex = newIndex;
-
-    return true;
+export circuit poke(newIndex: Uint<192>, timestamp: Uint<64>): Uint<192> {
+    assert(newIndex >= currentIndex, "Index must be non-decreasing");
+    currentIndex = disclose(newIndex);
+    lastCheckpointAt = disclose(timestamp);
+    return currentIndex;
 }
