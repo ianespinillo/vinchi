@@ -93,3 +93,20 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+
+  worker:
+    build:
+      context: ..
+      dockerfile: apps/worker/Dockerfile
+    container_name: vinchi-worker
+    environment:
+      MIDNIGHT_NODE_URL: "ws://node:9944"
+      PROOF_SERVER_URL: "http://proof-server:6300"
+      ENABLE_PATHWAY_B_BRIDGE: "false"
+      POKE_INTERVAL_MS: "60000"
+    depends_on:
+      node:
+        condition: service_healthy
+      proof-server:
+        condition: service_healthy
+

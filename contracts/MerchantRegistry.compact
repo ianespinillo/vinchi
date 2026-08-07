@@ -1,0 +1,18 @@
+// MerchantRegistry.compact — Registro Público de Comercios Habilitados
+
+ledger {
+    merchantTree: MerkleTree<20, Field>;
+    revokedMerchants: Set<Field>;
+    adminPublicKey: Bytes<32>;
+}
+
+circuit registerMerchant(merchantPubKeyHash: Field): Boolean {
+    // Inserta comercio en el árbol de comercios habilitados
+    ledger.merchantTree.insert(merchantPubKeyHash);
+    return true;
+}
+
+circuit revokeMerchant(merchantPubKeyHash: Field): Boolean {
+    ledger.revokedMerchants.insert(merchantPubKeyHash);
+    return true;
+}

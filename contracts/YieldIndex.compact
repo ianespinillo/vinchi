@@ -1,0 +1,19 @@
+// YieldIndex.compact — Historial de Índices de Rendimiento y Checkpoints
+
+ledger {
+    currentIndex: Uint<128>;
+    lastCheckpointTimestamp: Uint<64>;
+    indexCheckpoints: MerkleTree<16, Field>;
+}
+
+// Circuito poke(): Sin permisos. Cualquiera puede densificar el historial.
+circuit poke(timestamp: Uint<64>, newIndex: Uint<128>): Boolean {
+    assert timestamp > ledger.lastCheckpointTimestamp;
+    
+    const checkpointHash = hash(timestamp, newIndex);
+    ledger.indexCheckpoints.insert(checkpointHash);
+    ledger.lastCheckpointTimestamp = timestamp;
+    ledger.currentIndex = newIndex;
+
+    return true;
+}

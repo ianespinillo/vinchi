@@ -1,0 +1,85 @@
+// VinchiNotes.compact — Contrato Núcleo de Pagos Privados en Midnight
+// Basado en la especificación nativa de notas (modelo UTXO/Zcash)
+
+struct Note {
+    owner: Bytes<32>,
+    amount: Uint<128>,
+    maturesAt: Uint<64>,
+    rateBps: Uint<16>,
+    nonce: Bytes<32>
+}
+
+ledger {
+    // Árbol de Merkle de commitments de todas las notas emitidas
+    noteTree: MerkleTree<32, Field>;
+
+    // Conjunto de nullifiers gastados para prevención de doble gasto
+    nullifiers: Set<Field>;
+
+    // Prueba de reservas públicas (Transparencia Agregada)
+    totalCollateral: Uint<128>;
+    totalIssued: Uint<128>;
+
+    // Raíz del árbol de Merkle de comercios habilitados
+    merchantRoot: Field;
+
+    // Estado de pausa por circuito (Governance)
+    isDepositPaused: Boolean;
+    isPayPaused: Boolean;
+}
+
+// Circuito de Depósito: USDC -> Nota Privada lUSDv
+circuit deposit(amount: Uint<128>, owner: Bytes<32>, nonce: Bytes<32>, maturesAt: Uint<64>): Field {
+    assert !ledger.isDepositPaused;
+    assert amount > 0;
+
+    // Calcular commitment de la nota
+    const commitment = hash(owner, amount, maturesAt, 0, nonce);
+
+    // Insertar commitment en el árbol de notas público
+    ledger.noteTree.insert(commitment);
+
+    // Actualizar agregados de reservas
+    ledger.totalCollateral = ledger.totalCollateral + amount;
+    ledger.totalIssued = ledger.totalIssued + amount;
+
+    return commitment;
+}
+
+// Circuito de Pago Privado ZK: Gastar notas de entrada y crear notas de salida (pago + cambio)
+circuit pay(
+    inputNullifier: Field,
+    outputMerchantCommitment: Field,
+    outputChangeCommitment: Field,
+    inputAmount: Uint<128>,
+    payAmount: Uint<128>,
+    changeAmount: Uint<128>
+): Boolean {
+    assert !ledger.isPayPaused;
+    assert inputAmount == payAmount + changeAmount; // Conservación de valor
+
+    // Verificación de doble gasto
+    assert !ledger.nullifiers.contains(inputNullifier);
+    ledger.nullifiers.insert(inputNullifier);
+
+    // Insertar nuevos commitments de salida
+    ledger.noteTree.insert(outputMerchantCommitment);
+    if (changeAmount > 0) {
+        ledger.noteTree.insert(outputChangeCommitment);
+    }
+
+    return true;
+}
+
+// Circuito de Retiro (Redeem): Nota Privada -> USDC
+circuit redeem(nullifier: Field, amount: Uint<128>): Boolean {
+    // REDEEM NUNCA ES PAUSABLE por diseño de seguridad
+    assert amount > 0;
+    assert !ledger.nullifiers.contains(nullifier);
+
+    ledger.nullifiers.insert(nullifier);
+    ledger.totalCollateral = ledger.totalCollateral - amount;
+    ledger.totalIssued = ledger.totalIssued - amount;
+
+    return true;
+}

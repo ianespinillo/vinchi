@@ -1,0 +1,18 @@
+// Governance.compact — Administración de Pausas y Roles
+
+ledger {
+    governorPubKey: Bytes<32>;
+    guardianPubKey: Bytes<32>;
+    isDepositPaused: Boolean;
+    isPayPaused: Boolean;
+}
+
+circuit setPauseDeposit(paused: Boolean): Boolean {
+    ledger.isDepositPaused = paused;
+    return true;
+}
+
+circuit setPausePay(paused: Boolean): Boolean {
+    ledger.isPayPaused = paused;
+    return true;
+}
