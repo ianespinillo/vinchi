@@ -30,24 +30,43 @@ export async function connectLace() {
 }
 
 /**
+ * Enumerates all injected Midnight DApp connector providers on window.midnight
+ */
+export const listWallets = (): any[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const injected = (window as any).midnight;
+    if (!injected || typeof injected !== 'object') return [];
+    return Object.values(injected).filter(v => v && typeof v === 'object');
+  } catch {
+    return [];
+  }
+};
+
+/**
  * Safely inspects browser window for Midnight / Lace DApp Connector providers.
  * Adheres strictly to Midnight CIP-30 / DApp Connector specifications.
  */
 function getInjectedMidnightProvider(): any {
   if (typeof window === 'undefined') return null;
-  const win = window as any;
-
-  if (win.lace) return win.lace;
-  if (win.midnight?.mnLace) return win.midnight.mnLace;
-  if (win.midnight?.lace) return win.midnight.lace;
-  if (win.midnight && typeof win.midnight === 'object' && Object.keys(win.midnight).length > 0) {
-    const firstKey = Object.keys(win.midnight)[0];
-    if (win.midnight[firstKey] && typeof win.midnight[firstKey] === 'object') {
-      return win.midnight[firstKey];
+  try {
+    const win = window as any;
+    if (win.lace) return win.lace;
+    if (win.midnight?.mnLace) return win.midnight.mnLace;
+    if (win.midnight?.lace) return win.midnight.lace;
+    if (win.midnight && typeof win.midnight === 'object') {
+      const keys = Object.keys(win.midnight);
+      if (keys.length > 0) {
+        const firstKey = keys[0];
+        if (win.midnight[firstKey] && typeof win.midnight[firstKey] === 'object') {
+          return win.midnight[firstKey];
+        }
+      }
     }
+    if (win.cardano?.lace) return win.cardano.lace;
+  } catch {
+    return null;
   }
-  if (win.cardano?.lace) return win.cardano.lace;
-
   return null;
 }
 
@@ -83,15 +102,22 @@ export class MidnightExtensionAdapter implements VinchiWalletAdapter, WalletAdap
 
       let address: string | null = null;
       try {
-        if (this.connectedApi && typeof this.connectedApi.getAddresses === 'function') {
+        if (this.connectedApi && typeof this.connectedApi.getUnshieldedAddress === 'function') {
+          const res = await this.connectedApi.getUnshieldedAddress().catch(() => null);
+          if (res?.unshieldedAddress) address = res.unshieldedAddress;
+        }
+        if (!address && this.connectedApi && typeof this.connectedApi.getShieldedAddresses === 'function') {
+          const addrs = await this.connectedApi.getShieldedAddresses().catch(() => null);
+          address = addrs?.shieldedAddress || addrs?.unshieldedAddress || (Array.isArray(addrs) ? addrs[0] : null);
+        } else if (!address && this.connectedApi && typeof this.connectedApi.getAddresses === 'function') {
           const addrs = await this.connectedApi.getAddresses().catch(() => null);
-          address = addrs?.unshieldedAddress || addrs?.shieldedAddress || addrs?.sender || (Array.isArray(addrs) ? addrs[0] : null);
-        } else if (this.connectedApi && typeof this.connectedApi.getAccounts === 'function') {
+          address = addrs?.shieldedAddress || addrs?.unshieldedAddress || addrs?.sender || (Array.isArray(addrs) ? addrs[0] : null);
+        } else if (!address && this.connectedApi && typeof this.connectedApi.getAccounts === 'function') {
           const accs = await this.connectedApi.getAccounts().catch(() => null);
           address = Array.isArray(accs) ? accs[0] : (accs?.sender || accs?.address || accs);
-        } else if (this.connectedApi && typeof this.connectedApi.state === 'function') {
+        } else if (!address && this.connectedApi && typeof this.connectedApi.state === 'function') {
           const st = await this.connectedApi.state().catch(() => null);
-          address = st?.unshieldedAddress || st?.address || st?.sender || (st && typeof st === 'object' ? st.sender : null) || null;
+          address = st?.shieldedAddress || st?.unshieldedAddress || st?.address || st?.sender || null;
         }
       } catch {
         address = 'mn1q_lace_preview_user_address';

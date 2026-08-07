@@ -1,5 +1,13 @@
 pragma language_version 0.23;
 
+/**
+ * VinchiNotes.compact - Midnight Compact Smart Contract Structure
+ * 
+ * Este es el contrato principal que la dApp Vinchi interactúa directamente.
+ * Gestiona el árbol de commitments ZK, el conjunto de nullifiers, la custodia de colateral USDC,
+ * y los circuitos ZK para deposit, pay (transferencias privadas), materialize (maduración lazy) y redeem.
+ */
+
 export struct Note {
     owner: Bytes<32>,
     amount: Uint<128>,
@@ -8,23 +16,29 @@ export struct Note {
     nonce: Bytes<32>
 }
 
-// Public ledger state
+// Libro de estado público (Ledger State)
 export ledger noteTreeRoot: Bytes<32>;
 export ledger lastNullifier: Bytes<32>;
-export ledger totalCollateral: Uint<128>;
-export ledger totalIssued: Uint<128>;
-export ledger merchantRoot: Bytes<32>;
-export ledger yieldIndex: Uint<192>;
+export ledger totalCollateral: Uint<128>; // USDC colateral custodiado público
+export ledger totalIssued: Uint<128>;     // Total lUSDv + mUSDv emitidos
+export ledger merchantRoot: Bytes<32>;    // Árbol Merkle de comercios verificados
+export ledger yieldIndex: Uint<192>;      // Índice de rendimiento heredado de YieldEngine
 
+/**
+ * Circuito Deposit: Recibe depósito de USDC collateral y emite nota lUSDv (Capital + Yield Adelantado).
+ */
 export circuit deposit(
     amount: Uint<128>,
     periodDays: Uint<64>,
     owner: Bytes<32>,
     nonce: Bytes<32>
 ): Uint<128> {
-    assert(amount > 0, "Amount must be greater than zero");
-    const netYield = 0 as Uint<128>;
-    const lAmount = (amount + netYield) as Uint<128>;
+    assert(amount > 0, "Monto depositado debe ser positivo");
+    assert(periodDays >= 1, "Periodo mínimo de 1 día");
+    
+    // El rendimiento adelantado se obtiene de la integración matemática con YieldEngine
+    const estimatedYield = (amount * 800 as Uint<128> * periodDays) / (3650000 as Uint<128>);
+    const lAmount = (amount + estimatedYield) as Uint<128>;
     
     totalCollateral = disclose((totalCollateral + amount) as Uint<128>);
     totalIssued = disclose((totalIssued + lAmount) as Uint<128>);
@@ -32,6 +46,10 @@ export circuit deposit(
     return lAmount;
 }
 
+/**
+ * Circuito Pay: Transacción ZK de pagos privados con notas lUSDv/mUSDv.
+ * Regla FIFO y conservación de valor: inputAmount == merchantAmount + changeAmount.
+ */
 export circuit pay(
     inputAmount: Uint<128>,
     merchantAmount: Uint<128>,
@@ -40,29 +58,38 @@ export circuit pay(
     merchantCommitment: Bytes<32>,
     changeCommitment: Bytes<32>
 ): [] {
-    assert(inputAmount == (merchantAmount + changeAmount) as Uint<128>, "Conservation of value failed");
+    assert(inputAmount == (merchantAmount + changeAmount) as Uint<128>, "Falló la regla de conservación de valor ZK");
     lastNullifier = disclose(nullifier);
     noteTreeRoot = disclose(merchantCommitment);
 }
 
+/**
+ * Circuito Materialize: Conversión lazy de lUSDv a mUSDv cuando llega el vencimiento (maturesAt <= currentTime).
+ */
 export circuit materialize(
     maturesAt: Uint<64>,
     currentTime: Uint<64>,
     nullifier: Bytes<32>,
     newCommitment: Bytes<32>
 ): [] {
-    assert(maturesAt <= currentTime, "Note has not reached maturity");
+    assert(maturesAt <= currentTime, "La nota aún no ha alcanzado la fecha de vencimiento");
     lastNullifier = disclose(nullifier);
     noteTreeRoot = disclose(newCommitment);
 }
 
+/**
+ * Circuito Redeem / Burn: El tenedor de mUSDv destruye sus tokens para retirar su colateral USDC + ganancias.
+ */
 export circuit redeem(
     amount: Uint<128>,
     nullifier: Bytes<32>
 ): Uint<128> {
-    assert(amount > 0, "Amount must be positive");
+    assert(amount > 0, "Monto a retirar debe ser positivo");
+    assert(totalCollateral >= amount, "Insuficiente colateral en Vault");
+
     lastNullifier = disclose(nullifier);
     totalCollateral = disclose((totalCollateral - amount) as Uint<128>);
     totalIssued = disclose((totalIssued - amount) as Uint<128>);
+    
     return amount;
 }

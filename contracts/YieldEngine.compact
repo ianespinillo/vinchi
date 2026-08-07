@@ -1,0 +1,50 @@
+pragma language_version 0.23;
+
+/**
+ * YieldEngine.compact - Midnight Compact Smart Contract Structure
+ * 
+ * Contiene la matemática detrás de las transacciones y rendimientos de Vinchi.
+ * Este contrato no es tocado directamente por la dApp; es consumido y coordinado
+ * por VinchiNotes y los bots keepers de maduración.
+ */
+
+// Estado del libro público de rendimientos
+export ledger baseIndex: Uint<192>;
+export ledger lastUpdateTimestamp: Uint<64>;
+export ledger defaultAprBps: Uint<16>; // Ej: 800 BPS = 8.00% APR
+
+/**
+ * Circuito para calcular el rendimiento adelantado neto para un depósito.
+ * Formula: netYield = (amount * aprBps * periodDays) / (365 * 10000) - protocolFee
+ */
+export circuit calculateAdvanceYield(
+    amount: Uint<128>,
+    periodDays: Uint<64>,
+    aprBps: Uint<16>
+): Uint<128> {
+    assert(amount > 0, "Monto debe ser mayor a cero");
+    assert(periodDays > 0, "Periodo debe ser mayor a cero");
+    
+    // Cálculo de interés bruto (días a segundos / base anual)
+    const grossYield = (amount * (aprBps as Uint<128>) * periodDays) / (3650000 as Uint<128>);
+    const protocolFee = (grossYield * 500 as Uint<128>) / 10000 as Uint<128>; // 5% fee de rendimiento
+    const netYield = (grossYield - protocolFee) as Uint<128>;
+
+    return netYield;
+}
+
+/**
+ * Circuito poke: actualiza el índice de rendimiento rebasing continuo.
+ */
+export circuit updateYieldIndex(
+    newIndex: Uint<192>,
+    timestamp: Uint<64>
+): Uint<192> {
+    assert(newIndex >= baseIndex, "El nuevo índice debe ser monótonamente creciente");
+    assert(timestamp >= lastUpdateTimestamp, "Timestamp inválido");
+
+    baseIndex = disclose(newIndex);
+    lastUpdateTimestamp = disclose(timestamp);
+
+    return baseIndex;
+}
