@@ -17,13 +17,59 @@ export const PROTOCOL_CONSTANTS = {
 
   // Default rate for MVP (0% yield in MVP Phase 0/1)
   DEFAULT_RATE_BPS: 0,
+  // Default fixed APR for hackathon yield calculation (12%)
+  DEFAULT_APR: 0.12,
 };
+
+/**
+ * Fase 5 — Motor de Rendimiento Adelantado (APR Fijo Hackathon)
+ * Formula:
+ * futureYield = amount * apr * days / 365
+ * minted = amount + futureYield
+ *
+ * Ejemplo:
+ * 1000 USDC, 12% APR (0.12), 30 días:
+ * futureYield = 1000 * 0.12 * 30 / 365 = 9.86 USDC
+ * minted = 1009.86 lUSDv
+ */
+export function calculateAdvancedYield(
+  amount: bigint,
+  days: number = 30,
+  apr: number = 0.12
+): {
+  principal: bigint;
+  expectedYield: bigint;
+  mintedAmount: bigint;
+  aprPercent: number;
+} {
+  if (amount <= 0n || days <= 0) {
+    return {
+      principal: amount,
+      expectedYield: 0n,
+      mintedAmount: amount,
+      aprPercent: apr * 100
+    };
+  }
+
+  const aprBps = BigInt(Math.floor(apr * 10000)); // 12% APR -> 1200 BPS
+  const daysBig = BigInt(days);
+
+  const expectedYield = (amount * aprBps * daysBig) / (365n * 10000n);
+  const mintedAmount = amount + expectedYield;
+
+  return {
+    principal: amount,
+    expectedYield,
+    mintedAmount,
+    aprPercent: apr * 100
+  };
+}
 
 export const DEFAULT_MIDNIGHT_ENDPOINTS = {
   NODE_URL: 'http://localhost:9944',
   INDEXER_URL: 'https://indexer.preview.midnight.network/api/v1/graphql',
   PROOF_SERVER_URL: 'http://localhost:6300',
-  FAUCET_URL: 'https://faucet.preview.midnight.network/api/v1/faucet',
+  FAUCET_URL: 'https://faucet.preview.midnight.network/',
   BACKEND_URL: 'http://localhost:4000',
   NETWORK_ID: 'preview',
   DOCS_URL: 'https://docs.midnight.network/'

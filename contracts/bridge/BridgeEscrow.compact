@@ -1,0 +1,25 @@
+pragma language_version 0.23;
+
+export ledger escrowedUsdcBalance: Uint<128>;
+export ledger lastBridgeDepositHash: Bytes<32>;
+export ledger totalBridgeDeposits: Uint<64>;
+export ledger aaveYieldIndex: Uint<192>;
+
+export circuit depositToBridgeEscrow(
+    depositId: Bytes<32>,
+    amount: Uint<128>
+): Bytes<32> {
+    assert(amount > 0, "Bridge deposit amount must be positive");
+    escrowedUsdcBalance = disclose((escrowedUsdcBalance + amount) as Uint<128>);
+    totalBridgeDeposits = disclose((totalBridgeDeposits + 1) as Uint<64>);
+    lastBridgeDepositHash = disclose(depositId);
+    return depositId;
+}
+
+export circuit simulateAaveYieldPoke(
+    newYieldIndex: Uint<192>
+): Uint<192> {
+    assert(newYieldIndex >= aaveYieldIndex, "Aave yield index must be non-decreasing");
+    aaveYieldIndex = disclose(newYieldIndex);
+    return aaveYieldIndex;
+}

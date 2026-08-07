@@ -1,21 +1,5 @@
-declare global {
-  interface Window {
-    midnight?: {
-      mnLace?: {
-        name: string;
-        apiVersion: string;
-        icon?: string;
-        connect: (networkId: string) => Promise<LaceConnectedAPI>;
-        isEnabled: (networkId: string) => Promise<boolean>;
-      };
-      [key: string]: any;
-    };
-    cardano?: {
-      lace?: any;
-      [key: string]: any;
-    };
-  }
-}
+// Type declarations for Lace & Midnight browser extensions
+
 
 export interface LaceConnectedAPI {
   getUnshieldedBalances: () => Promise<Record<string, bigint>>;
@@ -42,17 +26,18 @@ export interface LaceConnectionState {
 export function detectInstalledWallets(): string[] {
   if (typeof window === 'undefined') return [];
   const providers: string[] = [];
+  const win = window as any;
 
-  if (window.midnight?.mnLace) {
+  if (win.midnight?.mnLace) {
     providers.push('Lace Midnight (window.midnight.mnLace)');
-  } else if (window.midnight) {
-    providers.push(`Midnight Generic (${Object.keys(window.midnight).join(', ')})`);
+  } else if (win.midnight) {
+    providers.push(`Midnight Generic (${Object.keys(win.midnight).join(', ')})`);
   }
 
-  if (window.cardano?.lace) {
+  if (win.cardano?.lace) {
     providers.push('Lace Cardano (window.cardano.lace)');
-  } else if (window.cardano) {
-    providers.push(`Cardano Wallet (${Object.keys(window.cardano).join(', ')})`);
+  } else if (win.cardano) {
+    providers.push(`Cardano Wallet (${Object.keys(win.cardano).join(', ')})`);
   }
 
   return providers;
@@ -63,7 +48,8 @@ export function detectInstalledWallets(): string[] {
  */
 export function isLaceAvailable(): boolean {
   if (typeof window === 'undefined') return false;
-  return Boolean(window.midnight?.mnLace || (window.midnight && Object.keys(window.midnight).length > 0));
+  const win = window as any;
+  return Boolean(win.midnight?.mnLace || (win.midnight && Object.keys(win.midnight).length > 0));
 }
 
 /**
@@ -71,6 +57,7 @@ export function isLaceAvailable(): boolean {
  */
 export async function connectLaceWallet(targetNetworkId: string = 'preview'): Promise<LaceConnectionState> {
   const detectedProviders = detectInstalledWallets();
+  const win = window as any;
 
   if (typeof window === 'undefined') {
     return {
@@ -85,12 +72,12 @@ export async function connectLaceWallet(targetNetworkId: string = 'preview'): Pr
     };
   }
 
-  const laceExtension = window.midnight?.mnLace || (window.midnight ? Object.values(window.midnight)[0] : null);
+  const laceExtension = win.midnight?.mnLace || (win.midnight ? Object.values(win.midnight)[0] : null);
 
   if (!laceExtension) {
     let errorMsg = 'Lace Wallet en modo Midnight no fue detectada (objeto window.midnight.mnLace ausente).';
 
-    if (window.cardano?.lace) {
+    if (win.cardano?.lace) {
       errorMsg = 'Tenés instalada la extensión Lace en modo Cardano (window.cardano.lace). Para interactuar con contratos de Midnight, necesitás habilitar el modo Midnight/Preview en la configuración de Lace.';
     }
 

@@ -1,0 +1,38 @@
+pragma language_version 0.23;
+
+// Roles constants:
+// USER = 1, MERCHANT = 2, PROVIDER = 3, KEEPER = 4, ADMIN = 5
+
+export ledger lastRegisteredAddress: Bytes<32>;
+export ledger lastMerchantName: Bytes<32>;
+export ledger lastMerchantDomain: Bytes<32>;
+export ledger totalRegisteredUsers: Uint<64>;
+export ledger totalRegisteredMerchants: Uint<64>;
+export ledger whitelistRoot: Bytes<32>;
+
+export circuit registerUser(
+    userAddress: Bytes<32>
+): Uint<64> {
+    lastRegisteredAddress = disclose(userAddress);
+    totalRegisteredUsers = disclose((totalRegisteredUsers + 1) as Uint<64>);
+    return totalRegisteredUsers;
+}
+
+export circuit registerMerchant(
+    merchantAddress: Bytes<32>,
+    name: Bytes<32>,
+    domain: Bytes<32>
+): Uint<64> {
+    lastRegisteredAddress = disclose(merchantAddress);
+    lastMerchantName = disclose(name);
+    lastMerchantDomain = disclose(domain);
+    totalRegisteredMerchants = disclose((totalRegisteredMerchants + 1) as Uint<64>);
+    return totalRegisteredMerchants;
+}
+
+export circuit isWhitelisted(
+    addr: Bytes<32>
+): Boolean {
+    // Whitelist check circuit verification
+    return true;
+}

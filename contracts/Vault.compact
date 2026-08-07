@@ -1,0 +1,48 @@
+pragma language_version 0.23;
+
+export ledger totalAssets: Uint<128>;
+export ledger totalShares: Uint<128>;
+export ledger yieldIndex: Uint<192>;
+export ledger lastBatchId: Bytes<32>;
+export ledger totalBatchesCount: Uint<64>;
+
+export circuit deposit(
+    amount: Uint<128>,
+    maturityDays: Uint<64>
+): Bytes<32> {
+    assert(amount > 0, "Deposit amount must be positive");
+    assert(maturityDays > 0, "Maturity days must be greater than zero");
+
+    totalAssets = disclose((totalAssets + amount) as Uint<128>);
+    totalShares = disclose((totalShares + amount) as Uint<128>);
+    
+    totalBatchesCount = disclose((totalBatchesCount + 1) as Uint<64>);
+    
+    lastBatchId = disclose(lastBatchId);
+    return lastBatchId;
+}
+
+export circuit withdraw(
+    shares: Uint<128>
+): Uint<128> {
+    assert(shares <= totalShares, "Insufficient shares in vault");
+    totalAssets = disclose((totalAssets - shares) as Uint<128>);
+    totalShares = disclose((totalShares - shares) as Uint<128>);
+    return shares;
+}
+
+export circuit redeem(
+    amount: Uint<128>,
+    sharesToBurn: Uint<128>
+): Uint<128> {
+    assert(amount > 0, "Redeem amount must be positive");
+    assert(amount <= totalAssets, "Insufficient USDC assets in vault");
+    assert(sharesToBurn <= totalShares, "Insufficient mUSDv shares to burn");
+
+    // 1. Quemar mUSDv / actualizar shares
+    totalShares = disclose((totalShares - sharesToBurn) as Uint<128>);
+    // 2. Transferir/desbloquear USDC assets
+    totalAssets = disclose((totalAssets - amount) as Uint<128>);
+
+    return amount;
+}

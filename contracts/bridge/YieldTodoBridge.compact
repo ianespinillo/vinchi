@@ -1,0 +1,26 @@
+pragma language_version 0.23;
+
+export ledger lastBridgeEventHash: Bytes<32>;
+export ledger syncedBatchCount: Uint<64>;
+export ledger maturedBatchCount: Uint<64>;
+
+export circuit syncBatchToTodo(
+    batchId: Bytes<32>,
+    amount: Uint<128>,
+    expectedYield: Uint<128>,
+    maturesAt: Uint<64>
+): Bytes<32> {
+    assert(amount > 0, "Amount must be positive");
+    syncedBatchCount = disclose((syncedBatchCount + 1) as Uint<64>);
+    lastBridgeEventHash = disclose(batchId);
+    return batchId;
+}
+
+export circuit markBatchMatured(
+    batchId: Bytes<32>,
+    newNullifier: Bytes<32>
+): Bytes<32> {
+    maturedBatchCount = disclose((maturedBatchCount + 1) as Uint<64>);
+    lastBridgeEventHash = disclose(newNullifier);
+    return batchId;
+}

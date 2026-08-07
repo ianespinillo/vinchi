@@ -6,7 +6,10 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "dev": "pnpm --filter web dev",
-    "backend": "pnpm --filter backend dev"
+    "dev:all": "pnpm --parallel --filter web --filter backend --filter @vinchi/keeper dev",
+    "backend": "pnpm --filter backend dev",
+    "keeper": "pnpm --filter @vinchi/keeper dev",
+    "worker": "pnpm --filter worker dev"
   },
   "packageManager": "pnpm@10.6.1"
 }

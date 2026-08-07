@@ -1,0 +1,15 @@
+pragma language_version 0.23;
+
+export ledger totalBatchesCreated: Uint64;
+export ledger lastBatchId: Bytes<32>;
+
+export circuit createBatch(
+    batchId: Bytes<32>,
+    amount: Uint<128>,
+    maturesAt: Uint<64>
+): Bytes<32> {
+    assert(amount > 0, "Batch amount must be positive");
+    totalBatchesCreated = disclose((totalBatchesCreated + 1) as Uint64);
+    lastBatchId = disclose(batchId);
+    return batchId;
+}

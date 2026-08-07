@@ -1,0 +1,8 @@
+pragma language_version 0.23;
+
+export ledger merchantRoot: Bytes<32>;
+export ledger governor: Bytes<32>;
+
+export circuit updateMerchantRoot(newRoot: Bytes<32>): [] {
+    merchantRoot = disclose(newRoot);
+}

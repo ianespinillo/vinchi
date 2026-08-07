@@ -1,0 +1,58 @@
+pragma language_version 0.23;
+
+export ledger admin: Bytes<32>;
+export ledger totalUsdcSupply: Uint<128>;
+export ledger lastMintRecipient: Bytes<32>;
+export ledger lastMintAmount: Uint<128>;
+export ledger lastTransferRecipient: Bytes<32>;
+export ledger lastTransferAmount: Uint<128>;
+export ledger lastApprovedSpender: Bytes<32>;
+export ledger lastApprovedAmount: Uint<128>;
+
+export circuit mint(
+    to: Bytes<32>,
+    amount: Uint<128>
+): Uint<128> {
+    assert(amount > 0, "Mint amount must be positive");
+    totalUsdcSupply = disclose((totalUsdcSupply + amount) as Uint<128>);
+    lastMintRecipient = disclose(to);
+    lastMintAmount = disclose(amount);
+    return amount;
+}
+
+export circuit transfer(
+    to: Bytes<32>,
+    amount: Uint<128>
+): Uint<128> {
+    assert(amount > 0, "Transfer amount must be positive");
+    lastTransferRecipient = disclose(to);
+    lastTransferAmount = disclose(amount);
+    return amount;
+}
+
+export circuit balanceOf(
+    owner: Bytes<32>
+): Uint<128> {
+    return totalUsdcSupply;
+}
+
+export circuit approve(
+    spender: Bytes<32>,
+    amount: Uint<128>
+): Boolean {
+    assert(amount >= 0, "Approval amount must be non-negative");
+    lastApprovedSpender = disclose(spender);
+    lastApprovedAmount = disclose(amount);
+    return true;
+}
+
+export circuit transferFrom(
+    from: Bytes<32>,
+    to: Bytes<32>,
+    amount: Uint<128>
+): Uint<128> {
+    assert(amount > 0, "TransferFrom amount must be positive");
+    lastTransferRecipient = disclose(to);
+    lastTransferAmount = disclose(amount);
+    return amount;
+}

@@ -1,0 +1,60 @@
+pragma language_version 0.23;
+
+export struct Batch {
+    id: Bytes<32>,
+    principal: Uint<128>,
+    minted: Uint<128>,
+    createdAt: Uint<64>,
+    maturesAt: Uint<64>,
+    owner: Bytes<32>,
+    consumed: Boolean
+}
+
+export ledger totalBatches: Uint<64>;
+export ledger lastBatchId: Bytes<32>;
+export ledger totalConsumedShares: Uint<128>;
+
+export circuit createBatch(
+    batchId: Bytes<32>,
+    principal: Uint<128>,
+    minted: Uint<128>,
+    createdAt: Uint<64>,
+    maturesAt: Uint<64>,
+    owner: Bytes<32>
+): Bytes<32> {
+    assert(principal > 0, "Principal must be positive");
+    assert(minted >= principal, "Minted must be at least principal");
+    
+    totalBatches = disclose((totalBatches + 1) as Uint<64>);
+    lastBatchId = disclose(batchId);
+    return batchId;
+}
+
+export circuit splitBatch(
+    parentBatchId: Bytes<32>,
+    splitAmount: Uint<128>,
+    remainingAmount: Uint<128>,
+    newBatchId: Bytes<32>
+): Bytes<32> {
+    assert(splitAmount > 0, "Split amount must be positive");
+    assert(remainingAmount >= 0, "Remaining amount must be non-negative");
+    lastBatchId = disclose(newBatchId);
+    return newBatchId;
+}
+
+export circuit consumeFIFO(
+    batchId: Bytes<32>,
+    consumedAmount: Uint<128>
+): Uint<128> {
+    assert(consumedAmount > 0, "Consumed amount must be positive");
+    totalConsumedShares = disclose((totalConsumedShares + consumedAmount) as Uint<128>);
+    lastBatchId = disclose(batchId);
+    return consumedAmount;
+}
+
+export circuit isMatured(
+    maturesAt: Uint<64>,
+    currentTime: Uint<64>
+): Boolean {
+    return maturesAt <= currentTime;
+}

@@ -1,0 +1,14 @@
+pragma language_version 0.23;
+
+export ledger totalUsdcSupply: Uint<128>;
+export ledger lastMintRecipient: Bytes<32>;
+
+export circuit mintUsdc(
+    recipient: Bytes<32>,
+    amount: Uint<128>
+): Uint<128> {
+    assert(amount > 0, "Mint amount must be positive");
+    totalUsdcSupply = disclose((totalUsdcSupply + amount) as Uint<128>);
+    lastMintRecipient = disclose(recipient);
+    return amount;
+}

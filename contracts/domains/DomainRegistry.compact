@@ -1,0 +1,36 @@
+pragma language_version 0.23;
+
+export struct DomainRecord {
+    nameHash: Bytes<32>,
+    ownerCommitment: Bytes<32>,
+    controllerKey: Bytes<32>,
+    expiresAt: Uint<64>
+}
+
+export ledger lastDomainHash: Bytes<32>;
+export ledger lastResolvedAddress: Bytes<32>;
+export ledger totalDomainsRegistered: Uint<64>;
+
+export circuit registerDomain(
+    nameHash: Bytes<32>,
+    ownerAddress: Bytes<32>,
+    expiresAt: Uint<64>
+): Bytes<32> {
+    assert(expiresAt > 0, "Expiration time must be set");
+    lastDomainHash = disclose(nameHash);
+    lastResolvedAddress = disclose(ownerAddress);
+    totalDomainsRegistered = disclose((totalDomainsRegistered + 1) as Uint<64>);
+    return nameHash;
+}
+
+export circuit resolve(
+    nameHash: Bytes<32>
+): Bytes<32> {
+    return lastResolvedAddress;
+}
+
+export circuit reverse(
+    ownerAddress: Bytes<32>
+): Bytes<32> {
+    return lastDomainHash;
+}
