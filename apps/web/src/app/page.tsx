@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { VinchiSDK, isLaceAvailable, connectLaceWallet, LaceConnectionState } from '@vinchi/sdk';
 import { VinchiWallet } from '@vinchi/wallet-core';
-import { Merchant, WalletNote, ProtocolStats } from '@vinchi/shared';
+import { Merchant, WalletNote, ProtocolStats, formatTokenBalance } from '@vinchi/shared';
 
 export default function Home() {
   const [sdk] = useState(() => new VinchiSDK());
@@ -67,21 +67,22 @@ export default function Home() {
 
   const handleConnectLace = async () => {
     setIsProcessing(true);
-    setStatusMsg({ type: 'info', text: 'Solicitando conexión a la extensión Lace Wallet (window.midnight.mnLace)...' });
+    setStatusMsg({ type: 'info', text: 'Solicitando conexión a la extensión Lace Wallet en red Midnight Preview...' });
 
-    const res = await connectLaceWallet('preprod');
+    const res = await connectLaceWallet('preview');
     setLaceState(res);
     setIsProcessing(false);
 
     if (res.isConnected) {
+      const formattedBal = res.unshieldedBalance !== null ? `${formatTokenBalance(res.unshieldedBalance, 6)} tNIGHT` : 'Saldo consultado';
       setStatusMsg({
         type: 'success',
-        text: `¡Lace Wallet conectada con éxito! Dirección: ${res.unshieldedAddress}`
+        text: `¡Lace Wallet conectada en Preview! Dirección: ${res.unshieldedAddress} | Saldo Lace: ${formattedBal}`
       });
     } else {
       setStatusMsg({
         type: 'error',
-        text: res.error || 'No se pudo conectar a Lace Wallet.'
+        text: res.error || 'No se pudo conectar a Lace Wallet en Preview.'
       });
     }
   };
@@ -197,8 +198,8 @@ export default function Home() {
             <span>✨</span>
             <span>
               {laceState.isConnected
-                ? `Lace Conectado (${laceState.unshieldedAddress?.slice(0, 10)}...)`
-                : 'Conectar Lace Wallet'}
+                ? `Lace Preview (${laceState.unshieldedAddress?.slice(0, 8)}...${laceState.unshieldedBalance !== null ? ` | ${formatTokenBalance(laceState.unshieldedBalance, 6)} tNIGHT` : ''})`
+                : 'Conectar Lace Wallet (Preview)'}
             </span>
           </button>
 
@@ -207,12 +208,12 @@ export default function Home() {
             <div className="flex items-center gap-3 bg-zinc-900/80 px-3.5 py-2 rounded-xl border border-zinc-800 text-xs">
               <div>
                 <span className="text-zinc-500 block">Colateral</span>
-                <span className="font-semibold text-emerald-400">{stats.totalCollateralUsdc.toString()} USDC</span>
+                <span className="font-semibold text-emerald-400">{formatTokenBalance(stats.totalCollateralUsdc, 0)} USDC</span>
               </div>
               <div className="w-px h-6 bg-zinc-800" />
               <div>
                 <span className="text-zinc-500 block">Emitido</span>
-                <span className="font-semibold text-purple-400">{stats.totalIssuedLusd.toString()} lUSDv</span>
+                <span className="font-semibold text-purple-400">{formatTokenBalance(stats.totalIssuedLusd, 0)} lUSDv</span>
               </div>
             </div>
           )}
@@ -243,32 +244,67 @@ export default function Home() {
           </div>
         )}
 
-        {/* Top Balance Summary Card */}
-        <div className="glass-panel p-6 rounded-2xl glow-purple relative overflow-hidden">
-          <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-purple-600/10 rounded-full blur-3xl" />
-          <div className="flex flex-col md:flex-row justify-between md:items-center gap-6 relative z-10">
-            <div>
-              <span className="text-xs uppercase tracking-wider text-purple-400 font-semibold">Balance Privado Local (Cliente)</span>
-              <div className="text-4xl md:text-5xl font-extrabold mt-1 tracking-tight text-white">
-                {balance.toString()} <span className="text-2xl font-normal text-purple-300">lUSDv</span>
+        {/* Top Balance Summary Cards Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Card 1: Local ZK Note Balance */}
+          <div className="glass-panel p-6 rounded-2xl glow-purple relative overflow-hidden flex flex-col justify-between">
+            <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-purple-600/10 rounded-full blur-3xl" />
+            <div className="relative z-10 space-y-3">
+              <span className="text-xs uppercase tracking-wider text-purple-400 font-semibold flex items-center gap-1.5">
+                <span>🔒</span> Balance Privado ZK (Vinchi Notes)
+              </span>
+              <div className="text-4xl font-extrabold tracking-tight text-white">
+                {formatTokenBalance(balance, 0)} <span className="text-2xl font-normal text-purple-300">lUSDv</span>
               </div>
-              <p className="text-xs text-zinc-400 mt-2">
-                🔒 El balance se calcula en tu dispositivo sumando tus billetes sin exponer nada a la red.
+              <p className="text-xs text-zinc-400">
+                Suma calculada en cliente de tus billetes ZK en memoria sin exponer montos on-chain.
               </p>
             </div>
-
-            <div className="flex gap-3">
+            <div className="flex gap-2 mt-4 relative z-10">
               <button
                 onClick={() => setActiveTab('wallet')}
-                className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 font-medium text-sm text-white transition-all shadow-lg"
+                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 font-medium text-xs text-white transition-all shadow-md"
               >
                 + Depositar USDC
               </button>
               <button
                 onClick={() => setActiveTab('pay')}
-                className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 font-medium text-sm text-zinc-200 border border-zinc-700 transition-all"
+                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 font-medium text-xs text-zinc-200 border border-zinc-700 transition-all"
               >
-                💸 Pagar a Comercio
+                💸 Pagar
+              </button>
+            </div>
+          </div>
+
+          {/* Card 2: Connected Lace Wallet Balance (tNIGHT) */}
+          <div className="glass-panel p-6 rounded-2xl border border-zinc-800 relative overflow-hidden flex flex-col justify-between">
+            <div className="relative z-10 space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-xs uppercase tracking-wider text-emerald-400 font-semibold flex items-center gap-1.5">
+                  <span>🦊</span> Lace Wallet (Midnight {laceState.networkId || 'Preview'})
+                </span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full border ${laceState.isConnected ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : 'bg-zinc-800 text-zinc-400 border-zinc-700'}`}>
+                  {laceState.isConnected ? 'Conectado' : 'Desconectado'}
+                </span>
+              </div>
+              <div className="text-4xl font-extrabold tracking-tight text-white">
+                {laceState.isConnected
+                  ? (laceState.unshieldedBalance !== null ? formatTokenBalance(laceState.unshieldedBalance, 6) : '0')
+                  : '—'} <span className="text-2xl font-normal text-emerald-300">tNIGHT</span>
+              </div>
+              <p className="text-xs text-zinc-400">
+                {laceState.isConnected
+                  ? `Dirección: ${laceState.unshieldedAddress?.slice(0, 16)}... ${laceState.unshieldedBalance !== null ? `(${laceState.unshieldedBalance.toString()} unidades atómicas)` : ''}`
+                  : 'Conecta tu extensión Lace Wallet para vincular tu saldo de la testnet Preview.'}
+              </p>
+            </div>
+            <div className="flex gap-2 mt-4 relative z-10">
+              <button
+                onClick={handleConnectLace}
+                disabled={isProcessing}
+                className="px-4 py-2 rounded-xl bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 font-medium text-xs border border-emerald-700 transition-all"
+              >
+                {laceState.isConnected ? '🔄 Sincronizar Lace' : '✨ Conectar Lace Wallet'}
               </button>
             </div>
           </div>
@@ -302,10 +338,10 @@ export default function Home() {
           <div className="max-w-2xl mx-auto glass-card p-6 rounded-2xl border border-zinc-800 space-y-6">
             <div>
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <span>🦊</span> Conector Oficial Lace Wallet (Midnight DApp Connector)
+                <span>🦊</span> Conector Oficial Lace Wallet (Midnight DApp Connector API)
               </h2>
               <p className="text-xs text-zinc-400 mt-1">
-                Conecta la extensión oficial de Lace Wallet mediante la API <code className="text-purple-300">window.midnight.mnLace</code>.
+                Conecta la extensión oficial de Lace Wallet en la red <strong className="text-purple-300">Midnight Preview Testnet</strong> mediante la API <code className="text-purple-300">window.midnight.mnLace</code>.
               </p>
             </div>
 
@@ -329,13 +365,27 @@ export default function Home() {
               <div className="flex justify-between items-center">
                 <span className="text-zinc-400">Estado de Conexión:</span>
                 <span className={`font-bold ${laceState.isConnected ? 'text-emerald-400' : 'text-zinc-500'}`}>
-                  {laceState.isConnected ? 'Conectado a Preprod' : 'Desconectado'}
+                  {laceState.isConnected ? `Conectado a ${laceState.networkId}` : 'Desconectado'}
                 </span>
               </div>
 
+              <div className="flex justify-between items-center">
+                <span className="text-zinc-400">Saldo Unshielded en Lace Wallet:</span>
+                <span className="font-bold text-emerald-300 font-mono">
+                  {laceState.unshieldedBalance !== null ? `${formatTokenBalance(laceState.unshieldedBalance, 6)} tNIGHT` : 'No consultado / Sin fondos'}
+                </span>
+              </div>
+
+              {laceState.unshieldedBalance !== null && (
+                <div className="flex justify-between items-center text-[11px] text-zinc-500 font-mono">
+                  <span>Unidades Atómicas Raw (10^6):</span>
+                  <span>{laceState.unshieldedBalance.toString()}</span>
+                </div>
+              )}
+
               {laceState.unshieldedAddress && (
                 <div className="pt-2 border-t border-zinc-800">
-                  <span className="text-zinc-500 block">Dirección Pública Unshielded:</span>
+                  <span className="text-zinc-500 block">Dirección Pública Unshielded (Lace):</span>
                   <span className="font-mono text-purple-300 text-xs break-all">{laceState.unshieldedAddress}</span>
                 </div>
               )}
@@ -348,17 +398,18 @@ export default function Home() {
               </div>
             )}
 
-            {!laceState.isConnected ? (
-              <button
-                onClick={handleConnectLace}
-                disabled={isProcessing}
-                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium text-sm transition-all shadow-lg glow-purple"
-              >
-                {isProcessing ? 'Conectando...' : 'Conectar / Reintentar Lace Wallet'}
-              </button>
-            ) : (
-              <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs">
-                ✓ Conexión establecida con la extensión Lace de Midnight. Las transacciones ZK pueden ser firmadas y autorizadas mediante tu billetera de navegador.
+            <button
+              onClick={handleConnectLace}
+              disabled={isProcessing}
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium text-sm transition-all shadow-lg glow-purple"
+            >
+              {isProcessing ? 'Conectando / Sincronizando...' : (laceState.isConnected ? '🔄 Reconsultar / Sincronizar Saldo Lace' : 'Conectar / Reintentar Lace Wallet (Preview)')}
+            </button>
+
+            {laceState.isConnected && (
+              <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs space-y-1">
+                <div className="font-bold">✓ Conexión establecida con Lace Wallet (Preview)</div>
+                <div>Las transacciones ZK pueden ser firmadas y autorizadas mediante tu billetera de navegador en la testnet Preview.</div>
               </div>
             )}
           </div>

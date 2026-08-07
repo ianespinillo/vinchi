@@ -69,7 +69,7 @@ export function isLaceAvailable(): boolean {
 /**
  * Connects to Lace Wallet via Midnight DApp Connector API with automatic network fallback
  */
-export async function connectLaceWallet(targetNetworkId: string = 'undeployed'): Promise<LaceConnectionState> {
+export async function connectLaceWallet(targetNetworkId: string = 'preview'): Promise<LaceConnectionState> {
   const detectedProviders = detectInstalledWallets();
 
   if (typeof window === 'undefined') {
@@ -91,7 +91,7 @@ export async function connectLaceWallet(targetNetworkId: string = 'undeployed'):
     let errorMsg = 'Lace Wallet en modo Midnight no fue detectada (objeto window.midnight.mnLace ausente).';
 
     if (window.cardano?.lace) {
-      errorMsg = 'Tenés instalada la extensión Lace en modo Cardano (window.cardano.lace). Para interactuar con contratos de Midnight, necesitás habilitar el modo Midnight/Devnet en la configuración de Lace.';
+      errorMsg = 'Tenés instalada la extensión Lace en modo Cardano (window.cardano.lace). Para interactuar con contratos de Midnight, necesitás habilitar el modo Midnight/Preview en la configuración de Lace.';
     }
 
     return {
@@ -106,8 +106,8 @@ export async function connectLaceWallet(targetNetworkId: string = 'undeployed'):
     };
   }
 
-  // Network IDs to attempt in fallback order
-  const networksToTry = Array.from(new Set([targetNetworkId, 'undeployed', 'devnet', 'testnet', 'preprod']));
+  // Network IDs supported by Lace: preview, preprod, undeployed, mainnet
+  const networksToTry = Array.from(new Set([targetNetworkId, 'preview', 'preprod', 'undeployed', 'mainnet']));
   let lastError: any = null;
 
   for (const netId of networksToTry) {
@@ -119,18 +119,45 @@ export async function connectLaceWallet(targetNetworkId: string = 'undeployed'):
       let unshieldedAddress: string | null = null;
       let unshieldedBalance: bigint | null = null;
 
-      if (api.getAddresses) {
+      // Extract address using available API methods
+      if (typeof api.getAddresses === 'function') {
         const addresses = await api.getAddresses();
-        unshieldedAddress = addresses.unshieldedAddress;
+        unshieldedAddress = addresses?.unshieldedAddress || addresses?.address || null;
+      } else if (typeof api.state === 'function') {
+        const state = await api.state();
+        unshieldedAddress = state?.unshieldedAddress || state?.address || null;
       }
 
-      if (api.getUnshieldedBalances) {
+      // Extract balance using available API methods
+      if (typeof api.getUnshieldedBalances === 'function') {
         const balances = await api.getUnshieldedBalances();
-        const nightBalance = Object.values(balances)[0];
-        if (typeof nightBalance === 'bigint') {
-          unshieldedBalance = nightBalance;
-        } else if (typeof nightBalance === 'number' || typeof nightBalance === 'string') {
-          unshieldedBalance = BigInt(nightBalance);
+        if (balances && Object.keys(balances).length > 0) {
+          const firstBal = Object.values(balances)[0];
+          if (firstBal !== undefined && firstBal !== null) {
+            unshieldedBalance = BigInt(firstBal);
+          }
+        }
+      }
+
+      if (unshieldedBalance === null && typeof api.state === 'function') {
+        const state = await api.state();
+        if (state?.balances && Object.keys(state.balances).length > 0) {
+          const firstBal = Object.values(state.balances)[0];
+          if (firstBal !== undefined && firstBal !== null) {
+            unshieldedBalance = BigInt(firstBal);
+          }
+        } else if (state?.unshieldedBalance !== undefined && state?.unshieldedBalance !== null) {
+          unshieldedBalance = BigInt(state.unshieldedBalance);
+        }
+      }
+
+      if (unshieldedBalance === null && typeof api.balances === 'function') {
+        const balances = await api.balances();
+        if (balances && Object.keys(balances).length > 0) {
+          const firstBal = Object.values(balances)[0];
+          if (firstBal !== undefined && firstBal !== null) {
+            unshieldedBalance = BigInt(firstBal);
+          }
         }
       }
 
@@ -138,7 +165,7 @@ export async function connectLaceWallet(targetNetworkId: string = 'undeployed'):
         isAvailable: true,
         isConnected: true,
         networkId: netId,
-        unshieldedAddress: unshieldedAddress || '0x_lace_connected_user',
+        unshieldedAddress: unshieldedAddress || '0x_lace_preview_user',
         unshieldedBalance,
         api,
         error: null,
@@ -157,7 +184,7 @@ export async function connectLaceWallet(targetNetworkId: string = 'undeployed'):
     unshieldedAddress: null,
     unshieldedBalance: null,
     api: null,
-    error: lastError?.message || `Error de Network ID en Lace Wallet. Redes probadas: ${networksToTry.join(', ')}. Verifica en Lace qué red tenés seleccionada (Devnet, Testnet o Undeployed).`,
+    error: lastError?.message || `Error de conexión en Lace Wallet. Redes probadas: ${networksToTry.join(', ')}. Verifica en Lace qué red tenés seleccionada (Preview, Preprod o Devnet).`,
     detectedProviders
   };
 }
