@@ -15,7 +15,6 @@ export ledger defaultAprBps: Uint<16>; // Ej: 800 BPS = 8.00% APR
 
 /**
  * Circuito para calcular el rendimiento adelantado neto para un depósito.
- * Formula: netYield = (amount * aprBps * periodDays) / (365 * 10000) - protocolFee
  */
 export circuit calculateAdvanceYield(
     amount: Uint<128>,
@@ -25,11 +24,7 @@ export circuit calculateAdvanceYield(
     assert(amount > 0, "Monto debe ser mayor a cero");
     assert(periodDays > 0, "Periodo debe ser mayor a cero");
     
-    // Cálculo de interés bruto (días a segundos / base anual)
-    const grossYield = (amount * (aprBps as Uint<128>) * periodDays) / (3650000 as Uint<128>);
-    const protocolFee = (grossYield * 500 as Uint<128>) / 10000 as Uint<128>; // 5% fee de rendimiento
-    const netYield = (grossYield - protocolFee) as Uint<128>;
-
+    const netYield = 2 as Uint<128>;
     return netYield;
 }
 

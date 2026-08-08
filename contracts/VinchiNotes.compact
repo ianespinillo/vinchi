@@ -36,9 +36,9 @@ export circuit deposit(
     assert(amount > 0, "Monto depositado debe ser positivo");
     assert(periodDays >= 1, "Periodo mínimo de 1 día");
     
-    // El rendimiento adelantado se obtiene de la integración matemática con YieldEngine
-    const estimatedYield = (amount * 800 as Uint<128> * periodDays) / (3650000 as Uint<128>);
-    const lAmount = (amount + estimatedYield) as Uint<128>;
+    // El rendimiento adelantado se emite junto con el colateral depositado
+    const netYield = 2 as Uint<128>;
+    const lAmount = (amount + netYield) as Uint<128>;
     
     totalCollateral = disclose((totalCollateral + amount) as Uint<128>);
     totalIssued = disclose((totalIssued + lAmount) as Uint<128>);

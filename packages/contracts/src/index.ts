@@ -10,8 +10,12 @@ import { Contract as YieldIndexContract } from '../build/YieldIndex/contract/ind
 // @ts-ignore
 import { Contract as GovernanceContract } from '../build/Governance/contract/index.js';
 
+// @ts-ignore
+import { Contract as YieldEngineContract } from '../build/YieldEngine/contract/index.js';
+
 export {
   VinchiNotesContract,
+  YieldEngineContract,
   MerchantRegistryContract,
   YieldIndexContract,
   GovernanceContract

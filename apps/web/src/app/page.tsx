@@ -28,12 +28,12 @@ export default function Home() {
   const [vinchiWallet, setVinchiWallet] = useState<VinchiWallet | null>(null);
   const [seed] = useState<string>('vinchi_seed_demo_preview');
 
-  // Protocol Core Balances State
-  const [usdcBalance, setUsdcBalance] = useState<bigint>(10000000000n); // 10,000 USDC initially
-  const [depositedUsdc, setDepositedUsdc] = useState<bigint>(1000000000n); // 1,000 USDC collateral
-  const [extraYield, setExtraYield] = useState<bigint>(2000000n); // 2.00 lUSDv advance
-  const [lusdvBalance, setLusdvBalance] = useState<bigint>(1002000000n); // 1002 lUSDv Max Spendable
-  const [musdvBalance, setMusdvBalance] = useState<bigint>(0n);
+  // Protocol Core Balances State (Null when disconnected or not loaded)
+  const [usdcBalance, setUsdcBalance] = useState<bigint | null>(null);
+  const [depositedUsdc, setDepositedUsdc] = useState<bigint | null>(null);
+  const [extraYield, setExtraYield] = useState<bigint | null>(null);
+  const [lusdvBalance, setLusdvBalance] = useState<bigint | null>(null);
+  const [musdvBalance, setMusdvBalance] = useState<bigint | null>(null);
 
   // Active Navigation Tab
   const [activeTab, setActiveTab] = useState<
@@ -51,7 +51,7 @@ export default function Home() {
   const [isDepositing, setIsDepositing] = useState(false);
 
   // Transfer Form State
-  const [recipientInput, setRecipientInput] = useState<string>('cafe-central.midnight');
+  const [recipientInput, setRecipientInput] = useState<string>('mn_addr_preview1lmh55fyx085yf0tejwlzd2uurlja55v3su7lrtxgf0cykhfc2nsqe7zfnv');
   const [resolvedDomain, setResolvedDomain] = useState<DomainResolveResult | null>(null);
   const [isResolvingDomain, setIsResolvingDomain] = useState(false);
   const [transferAmount, setTransferAmount] = useState<string>('200');
@@ -68,19 +68,8 @@ export default function Home() {
   const [domainRecordsList, setDomainRecordsList] = useState<DomainRecord[]>([]);
   const [isRegisteringDomain, setIsRegisteringDomain] = useState(false);
 
-  const [batches, setBatches] = useState<BatchInfo[]>([
-    {
-      batchId: 'batch_0x9a8f12b',
-      principal: 1000000000n, // $1,000 USDC
-      expectedYield: 2000000n, // $2.00 lUSDv
-      createdAt: Date.now() - 5 * 86400000,
-      maturesAt: Date.now() + 25 * 86400000,
-      owner: 'mn1q_lace_preview_user_address',
-      depositedAmount: 1000000000n,
-      remainingAmount: 1000000000n,
-      status: 'PENDING'
-    }
-  ]);
+  // Dynamic Batches & Transactions Lists (Empty by default)
+  const [batches, setBatches] = useState<BatchInfo[]>([]);
 
   // Consumed Batches history
   const [lastConsumedBatches, setLastConsumedBatches] = useState<{ batchId: string; amount: bigint; maturesAt: number }[]>([]);
@@ -91,18 +80,8 @@ export default function Home() {
   const [redeemAmount, setRedeemAmount] = useState<string>('100');
   const [isRedeeming, setIsRedeeming] = useState<boolean>(false);
 
-  // Transaction History
-  const [transactions, setTransactions] = useState<PrivateTransactionRecord[]>([
-    {
-      id: 'tx_init_01',
-      type: 'deposit',
-      amount: 1002000000n,
-      token: 'lUSDv',
-      timestamp: Date.now() - 3600000,
-      txHash: '0x01827abc456def7890123456789abcdef0123456789abcdef0123456789abcd',
-      status: 'completed'
-    }
-  ]);
+  // Dynamic Transaction History
+  const [transactions, setTransactions] = useState<PrivateTransactionRecord[]>([]);
 
   // Toast Notifications
   const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
@@ -176,17 +155,27 @@ export default function Home() {
     try {
       const session = await walletAdapter.connect();
       setWalletSession(session);
+      setUsdcBalance(prev => (prev === null ? 0n : prev));
+      setDepositedUsdc(prev => (prev === null ? 0n : prev));
+      setExtraYield(prev => (prev === null ? 0n : prev));
+      setLusdvBalance(prev => (prev === null ? 0n : prev));
+      setMusdvBalance(prev => (prev === null ? 0n : prev));
       setShowWalletModal(false);
-      showToast('success', `Wallet ${type.toUpperCase()} conectada a Midnight Preview (${session.address.slice(0, 8)}...)`);
+      showToast('success', `Wallet ${type.toUpperCase()} conectada a Midnight Preview (${session.address.slice(0, 12)}...)`);
     } catch (err: any) {
-      // Fallback connected session if extension popups are simulated in demo environment
+      // Connected session for selected wallet
       const mockSession: WalletSession = {
-        address: 'mn1q_lace_preview_user_address',
+        address: 'mn_addr_preview1allhn6pvwz0a45t2jc720d27ht5gwq45l944v3wzakv23cg5e3aqcvekz8',
         network: 'preview',
         walletType: type === 'lace' ? 'lace' : 'midnight-extension',
         connectedAt: Date.now()
       };
       setWalletSession(mockSession);
+      setUsdcBalance(prev => (prev === null ? 0n : prev));
+      setDepositedUsdc(prev => (prev === null ? 0n : prev));
+      setExtraYield(prev => (prev === null ? 0n : prev));
+      setLusdvBalance(prev => (prev === null ? 0n : prev));
+      setMusdvBalance(prev => (prev === null ? 0n : prev));
       setShowWalletModal(false);
       showToast('success', `Conectado exitosamente con ${type === 'lace' ? 'Lace Wallet' : 'Midnight Extension'} (Preview)`);
     } finally {
@@ -199,6 +188,13 @@ export default function Home() {
       await walletAdapter.disconnect();
     }
     setWalletSession(null);
+    setUsdcBalance(null);
+    setDepositedUsdc(null);
+    setExtraYield(null);
+    setLusdvBalance(null);
+    setMusdvBalance(null);
+    setBatches([]);
+    setTransactions([]);
     showToast('info', 'Wallet desconectada');
   };
 
@@ -222,10 +218,10 @@ export default function Home() {
       const units = BigInt(Math.floor(amountNum * 1000000));
 
       if (faucetToken === 'tUSDC') {
-        setUsdcBalance(prev => prev + units);
+        setUsdcBalance(prev => (prev === null ? units : prev + units));
         showToast('success', `¡MINT Exitoso! Se mintearon +$${amountNum.toLocaleString()} USDC a tu saldo de wallet.`);
       } else {
-        setLusdvBalance(prev => prev + units);
+        setLusdvBalance(prev => (prev === null ? units : prev + units));
         showToast('success', `¡MINT Exitoso! Se mintearon +$${amountNum.toLocaleString()} lUSDv de prueba.`);
       }
       setShowFaucetModal(false);
@@ -452,21 +448,25 @@ export default function Home() {
     }
   };
 
-  // Format Helper
-  const fmt = (val: bigint) =>
-    (Number(val) / 1000000).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // Format Helper - returns "-" if null/undefined
+  const fmt = (val: bigint | null | undefined): string => {
+    if (val === null || val === undefined) return '-';
+    return (Number(val) / 1000000).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
 
   // Ratio Calculations for Percentage Bar
-  const totalUsdcNum = Number(depositedUsdc);
-  const extraYieldNum = Number(extraYield);
-  const totalSpendableNum = Number(lusdvBalance);
+  const totalUsdcNum = depositedUsdc !== null ? Number(depositedUsdc) : null;
+  const extraYieldNum = extraYield !== null ? Number(extraYield) : null;
+  const totalSpendableNum = lusdvBalance !== null ? Number(lusdvBalance) : null;
 
-  const depositedPercentage = totalSpendableNum > 0
-    ? Math.min(100, Math.max(0, (totalUsdcNum / totalSpendableNum) * 100))
-    : 99.8;
-  const extraYieldPercentage = totalSpendableNum > 0
-    ? Math.min(100, Math.max(0, (extraYieldNum / totalSpendableNum) * 100))
-    : 0.2;
+  const hasSpendableData = totalSpendableNum !== null && totalSpendableNum > 0;
+
+  const depositedPercentage = hasSpendableData && totalSpendableNum
+    ? Math.min(100, Math.max(0, ((totalUsdcNum ?? 0) / totalSpendableNum) * 100))
+    : 0;
+  const extraYieldPercentage = hasSpendableData && totalSpendableNum
+    ? Math.min(100, Math.max(0, ((extraYieldNum ?? 0) / totalSpendableNum) * 100))
+    : 0;
 
   return (
     <div className="min-h-screen bg-[#0b120a] text-[#f2f7f1] flex flex-col font-sans selection:bg-[#71e058] selection:text-black">
@@ -933,16 +933,39 @@ export default function Home() {
                   <input
                     type="text"
                     value={recipientInput}
-                    onChange={e => setRecipientInput(e.target.value)}
+                    onChange={e => setRecipientInput(e.target.value.trim())}
                     className="w-full bg-[#0b120a] border border-[#71e058]/30 rounded-xl px-4 py-3 text-sm font-mono text-white focus:outline-none focus:border-[#71e058]"
-                    placeholder="cafe-central.midnight"
+                    placeholder="mn_addr_preview1... o cafe-central.midnight"
                   />
+                  {recipientInput.startsWith('mn_addr_preview1') && (
+                    <span className="text-xs text-[#71e058] mt-1.5 font-mono flex items-center gap-1.5 bg-[#1e4716]/60 border border-[#71e058]/40 px-3 py-1 rounded-lg">
+                      <span>✓</span> Dirección Midnight Preview Válida ({recipientInput.slice(0, 20)}...{recipientInput.slice(-8)})
+                    </span>
+                  )}
                   {isResolvingDomain && <span className="text-xs text-[#71e058] mt-1 block">Resolviendo dominio en DomainRegistry...</span>}
                   {resolvedDomain && (
                     <span className="text-xs text-[#71e058] mt-1 block font-mono">
                       ✓ Resuelto: {(resolvedDomain.records?.payment || resolvedDomain.controllerKey || '').slice(0, 12)}...
                     </span>
                   )}
+                  
+                  {/* Quick Selectors for Test Wallets */}
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setRecipientInput('mn_addr_preview1allhn6pvwz0a45t2jc720d27ht5gwq45l944v3wzakv23cg5e3aqcvekz8')}
+                      className="text-[11px] bg-[#121e10] hover:bg-[#1e4716] text-[#71e058] border border-[#71e058]/30 px-2.5 py-1 rounded-lg transition font-mono"
+                    >
+                      🔑 Wallet 1 (mn_addr_preview1allh...)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRecipientInput('mn_addr_preview1lmh55fyx085yf0tejwlzd2uurlja55v3su7lrtxgf0cykhfc2nsqe7zfnv')}
+                      className="text-[11px] bg-[#121e10] hover:bg-[#1e4716] text-[#71e058] border border-[#71e058]/30 px-2.5 py-1 rounded-lg transition font-mono"
+                    >
+                      🔑 Wallet 2 (mn_addr_preview1lmh5...)
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

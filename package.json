@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "pnpm -r build",
+    "compile:contracts": "/home/elchurro274/.compact/versions/0.31.1/x86_64-unknown-linux-musl/compactc.bin --skip-zk contracts/VinchiNotes.compact contracts/build/VinchiNotes && /home/elchurro274/.compact/versions/0.31.1/x86_64-unknown-linux-musl/compactc.bin --skip-zk contracts/YieldEngine.compact contracts/build/YieldEngine && mkdir -p packages/contracts/build && cp -r contracts/build/* packages/contracts/build/",
+    "build": "pnpm compile:contracts && pnpm -r build",
     "test": "pnpm -r test",
     "dev": "pnpm --filter web dev",
     "dev:all": "pnpm --parallel --filter web --filter backend --filter @vinchi/keeper dev",
