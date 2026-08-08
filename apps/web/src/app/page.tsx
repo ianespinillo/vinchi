@@ -370,15 +370,37 @@ export default function Home() {
       prev.map(b => {
         if (b.batchId === batchId) {
           const maturedTotal = b.principal + b.expectedYield;
-          setMusdvBalance(m => m + maturedTotal);
+          setMusdvBalance(m => (m === null ? maturedTotal : m + maturedTotal));
           setUserShares(s => s + (maturedTotal * 1000000n));
-          setLusdvBalance(l => (l >= maturedTotal ? l - maturedTotal : 0n));
+          setLusdvBalance(l => (l !== null && l >= maturedTotal ? l - maturedTotal : 0n));
           showToast('success', `Lote ${batchId} madurado. Se convirtieron $${(Number(maturedTotal) / 1e6).toFixed(2)} lUSDv → mUSDv.`);
           return { ...b, status: 'MATURED', maturesAt: Date.now() - 1000 };
         }
         return b;
       })
     );
+  };
+
+  const handleMaterializeAll = () => {
+    let count = 0;
+    setBatches(prev =>
+      prev.map(b => {
+        if (b.status !== 'MATURED') {
+          const maturedTotal = b.principal + b.expectedYield;
+          setMusdvBalance(m => (m === null ? maturedTotal : m + maturedTotal));
+          setUserShares(s => s + (maturedTotal * 1000000n));
+          setLusdvBalance(l => (l !== null && l >= maturedTotal ? l - maturedTotal : 0n));
+          count++;
+          return { ...b, status: 'MATURED', maturesAt: Date.now() - 1000 };
+        }
+        return b;
+      })
+    );
+    if (count > 0) {
+      showToast('success', `Se maduraron ${count} lote(s) pendientes de lUSDv → mUSDv.`);
+    } else {
+      showToast('info', 'No hay lotes lUSDv pendientes por madurar.');
+    }
   };
 
   // Action: Redeem mUSDv -> USDC Collateral
@@ -1049,21 +1071,47 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Redeem Form */}
-                <div className="glass-card p-6 rounded-2xl space-y-4 border border-[#71e058]/20">
-                  <h3 className="font-bold text-base text-white">Retirar Colateral (Burn mUSDv → USDC)</h3>
-                  <div className="flex gap-4">
-                    <input
-                      type="number"
-                      value={redeemAmount}
-                      onChange={e => setRedeemAmount(e.target.value)}
-                      className="flex-1 bg-[#0b120a] border border-[#71e058]/30 rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-[#71e058]"
-                      placeholder="100"
-                    />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Convert lUSDv -> mUSDv (Lazy Materialization) */}
+                  <div className="glass-card p-6 rounded-2xl space-y-4 border border-[#71e058]/20 flex flex-col justify-between">
+                    <div>
+                      <h3 className="font-bold text-base text-white">Madurar lUSDv → mUSDv</h3>
+                      <p className="text-xs text-emerald-300/70 mt-1">
+                        Convierte tus notas de depósito <span className="text-[#71e058] font-bold">lUSDv</span> en tokens rebasables <span className="text-white font-bold">mUSDv</span>.
+                      </p>
+                      <div className="mt-3 text-xs font-mono bg-[#0b120a] p-3 rounded-xl border border-[#71e058]/15">
+                        Saldo lUSDv: <span className="text-[#71e058] font-bold">${fmt(lusdvBalance)}</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleMaterializeAll}
+                      className="w-full bg-[#71e058] hover:bg-[#86e670] text-[#0b120a] font-extrabold text-sm py-2.5 rounded-xl shadow-lg glow-lime transition"
+                    >
+                      ⚡ Madurar Lotes lUSDv → mUSDv
+                    </button>
+                  </div>
+
+                  {/* Redeem Form (mUSDv -> USDC) */}
+                  <div className="glass-card p-6 rounded-2xl space-y-4 border border-[#71e058]/20 flex flex-col justify-between">
+                    <div>
+                      <h3 className="font-bold text-base text-white">Retirar Colateral (Burn mUSDv → USDC)</h3>
+                      <p className="text-xs text-emerald-300/70 mt-1">
+                        Quema tus tokens maduros <span className="text-white font-bold">mUSDv</span> y retira tu colateral directo a tu wallet de USDC.
+                      </p>
+                      <div className="mt-3 flex gap-2">
+                        <input
+                          type="number"
+                          value={redeemAmount}
+                          onChange={e => setRedeemAmount(e.target.value)}
+                          className="flex-1 bg-[#0b120a] border border-[#71e058]/30 rounded-xl px-4 py-2 text-sm font-mono text-white focus:outline-none focus:border-[#71e058]"
+                          placeholder="100"
+                        />
+                      </div>
+                    </div>
                     <button
                       onClick={handleRedeemUsdc}
                       disabled={isRedeeming}
-                      className="bg-[#1e4716] hover:bg-[#285d1e] text-[#71e058] border border-[#71e058]/40 font-bold px-6 py-2.5 rounded-xl transition"
+                      className="w-full bg-[#1e4716] hover:bg-[#285d1e] text-[#71e058] border border-[#71e058]/40 font-bold text-sm py-2.5 rounded-xl transition"
                     >
                       {isRedeeming ? 'Procesando...' : 'Retirar USDC'}
                     </button>
